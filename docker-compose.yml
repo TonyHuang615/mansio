@@ -1,0 +1,11 @@
+services:
+  ghostterm:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ghostterm-data:/data
+    restart: unless-stopped
+
+volumes:
+  ghostterm-data:

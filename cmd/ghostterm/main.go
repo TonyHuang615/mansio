@@ -1,0 +1,64 @@
+package main
+
+import (
+	"context"
+	"embed"
+	"flag"
+	"fmt"
+	"io/fs"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/younkyumjin/ghostterm/internal/server"
+)
+
+//go:embed all:frontend/dist
+var frontendFS embed.FS
+
+func main() {
+	port := flag.Int("port", 8080, "server port")
+	dataDir := flag.String("data-dir", "./data", "data directory for SQLite database")
+	flag.Parse()
+
+	distFS, err := fs.Sub(frontendFS, "frontend/dist")
+	if err != nil {
+		log.Fatalf("failed to create sub filesystem: %v", err)
+	}
+
+	if err := os.MkdirAll(*dataDir, 0755); err != nil {
+		log.Fatalf("failed to create data directory: %v", err)
+	}
+
+	srv := server.New(distFS, *dataDir)
+
+	httpServer := &http.Server{
+		Addr:    fmt.Sprintf(":%d", *port),
+		Handler: srv.Handler(),
+	}
+
+	go func() {
+		log.Printf("GhostTerm listening on http://localhost:%d", *port)
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("server error: %v", err)
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	log.Println("shutting down...")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	srv.Shutdown()
+
+	if err := httpServer.Shutdown(ctx); err != nil {
+		log.Fatalf("server shutdown error: %v", err)
+	}
+	log.Println("server stopped")
+}

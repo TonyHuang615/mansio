@@ -1,0 +1,10 @@
+/ghostterm
+data/
+.omc/
+cmd/ghostterm/frontend/
+frontend/dist/
+frontend/node_modules/
+*.db
+*.db-journal
+*.db-wal
+.DS_Store

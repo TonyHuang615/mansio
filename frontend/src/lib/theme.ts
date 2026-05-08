@@ -1,0 +1,41 @@
+import type { ITheme } from '@xterm/xterm';
+
+export const terminalTheme: ITheme = {
+  background: '#0d1117',
+  foreground: '#c9d1d9',
+  cursor: '#58a6ff',
+  cursorAccent: '#0d1117',
+  selectionBackground: '#264f78',
+  selectionForeground: '#ffffff',
+  black: '#484f58',
+  red: '#ff7b72',
+  green: '#3fb950',
+  yellow: '#d29922',
+  blue: '#58a6ff',
+  magenta: '#bc8cff',
+  cyan: '#39d2c0',
+  white: '#c9d1d9',
+  brightBlack: '#6e7681',
+  brightRed: '#ffa198',
+  brightGreen: '#56d364',
+  brightYellow: '#e3b341',
+  brightBlue: '#79c0ff',
+  brightMagenta: '#d2a8ff',
+  brightCyan: '#56d4dd',
+  brightWhite: '#f0f6fc',
+};
+
+export const ui = {
+  sidebarBg: '#010409',
+  sidebarBorder: '#21262d',
+  tabBarBg: '#0d1117',
+  tabActiveBg: '#161b22',
+  tabInactiveBg: '#0d1117',
+  tabBorder: '#21262d',
+  textPrimary: '#c9d1d9',
+  textSecondary: '#8b949e',
+  textMuted: '#484f58',
+  accent: '#58a6ff',
+  danger: '#ff7b72',
+  terminalBg: '#0d1117',
+};
