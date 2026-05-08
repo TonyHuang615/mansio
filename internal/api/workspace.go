@@ -9,11 +9,12 @@ import (
 )
 
 type WorkspaceHandler struct {
-	store store.Store
+	store         store.Store
+	onDeleteFunc  func(workspaceID string)
 }
 
-func NewWorkspaceHandler(s store.Store) *WorkspaceHandler {
-	return &WorkspaceHandler{store: s}
+func NewWorkspaceHandler(s store.Store, onDelete func(workspaceID string)) *WorkspaceHandler {
+	return &WorkspaceHandler{store: s, onDeleteFunc: onDelete}
 }
 
 func (h *WorkspaceHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -77,9 +78,17 @@ func (h *WorkspaceHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 func (h *WorkspaceHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+
+	// Kill tmux sessions for all tabs before DB cascade delete
+	sessions, _ := h.store.ListSessions(id)
 	if err := h.store.DeleteWorkspace(id); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	if h.onDeleteFunc != nil {
+		for _, sess := range sessions {
+			h.onDeleteFunc(sess.ID)
+		}
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }

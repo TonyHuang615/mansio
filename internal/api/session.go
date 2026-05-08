@@ -9,11 +9,12 @@ import (
 )
 
 type SessionHandler struct {
-	store store.Store
+	store         store.Store
+	onDeleteFunc  func(sessionID string)
 }
 
-func NewSessionHandler(s store.Store) *SessionHandler {
-	return &SessionHandler{store: s}
+func NewSessionHandler(s store.Store, onDelete func(sessionID string)) *SessionHandler {
+	return &SessionHandler{store: s, onDeleteFunc: onDelete}
 }
 
 func (h *SessionHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -71,6 +72,9 @@ func (h *SessionHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	if err := h.store.DeleteSession(id); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	if h.onDeleteFunc != nil {
+		h.onDeleteFunc(id)
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }

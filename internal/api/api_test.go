@@ -20,13 +20,14 @@ func setupTestAPI(t *testing.T) (store.Store, *http.ServeMux) {
 	t.Cleanup(func() { s.Close() })
 
 	mux := http.NewServeMux()
-	wh := NewWorkspaceHandler(s)
+	noop := func(string) {}
+	wh := NewWorkspaceHandler(s, noop)
 	mux.HandleFunc("GET /api/v1/workspaces", wh.List)
 	mux.HandleFunc("POST /api/v1/workspaces", wh.Create)
 	mux.HandleFunc("PATCH /api/v1/workspaces/{id}", wh.Update)
 	mux.HandleFunc("DELETE /api/v1/workspaces/{id}", wh.Delete)
 
-	sh := NewSessionHandler(s)
+	sh := NewSessionHandler(s, noop)
 	mux.HandleFunc("GET /api/v1/workspaces/{wid}/sessions", sh.List)
 	mux.HandleFunc("POST /api/v1/workspaces/{wid}/sessions", sh.Create)
 	mux.HandleFunc("PATCH /api/v1/sessions/{id}", sh.Update)
