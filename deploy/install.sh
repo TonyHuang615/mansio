@@ -3,9 +3,8 @@ set -euo pipefail
 
 REPO="Younkyum/Loci-Terminal"
 INSTALL_DIR="/usr/local/bin"
-DATA_DIR="/var/lib/ghostterm"
-SERVICE_FILE="/etc/systemd/system/ghostterm@.service"
 PORT="${GHOSTTERM_PORT:-8080}"
+OS="$(uname -s)"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -17,40 +16,22 @@ warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
 error() { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
 
 check_deps() {
-    for cmd in tmux git curl; do
+    for cmd in tmux git; do
         if ! command -v "$cmd" &>/dev/null; then
-            error "$cmd is required but not installed. Install it first."
+            error "$cmd is required but not installed."
         fi
     done
-    info "Dependencies OK (tmux, git, curl)"
-}
-
-check_root() {
-    if [[ $EUID -ne 0 ]]; then
-        error "Run this script as root: sudo bash install.sh"
-    fi
-}
-
-detect_arch() {
-    local arch
-    arch=$(uname -m)
-    case "$arch" in
-        x86_64)  echo "amd64" ;;
-        aarch64) echo "arm64" ;;
-        arm64)   echo "arm64" ;;
-        *)       error "Unsupported architecture: $arch" ;;
-    esac
-}
-
-build_from_source() {
-    info "Building from source..."
-
     if ! command -v go &>/dev/null; then
         error "Go is required to build from source. Install Go 1.22+ first."
     fi
     if ! command -v node &>/dev/null; then
         error "Node.js is required to build from source. Install Node.js 20+ first."
     fi
+    info "Dependencies OK (go, node, tmux, git)"
+}
+
+build_from_source() {
+    info "Building from source..."
 
     local tmpdir
     tmpdir=$(mktemp -d)
@@ -69,28 +50,37 @@ build_from_source() {
     CGO_ENABLED=0 go build -ldflags="-s -w" -o ghostterm ./cmd/ghostterm
 
     info "Installing binary to ${INSTALL_DIR}..."
-    install -m 755 ghostterm "${INSTALL_DIR}/ghostterm"
+    if [[ "$OS" == "Darwin" ]]; then
+        sudo install -m 755 ghostterm "${INSTALL_DIR}/ghostterm"
+    else
+        install -m 755 ghostterm "${INSTALL_DIR}/ghostterm"
+    fi
 }
+
+# ── Linux (systemd) ──────────────────────────────────────────────
 
 setup_systemd() {
     local user="$1"
+    local data_dir="/var/lib/ghostterm"
+    local service_file="/etc/systemd/system/ghostterm@.service"
 
     info "Setting up systemd service for user: ${user}"
 
-    mkdir -p "$DATA_DIR"
-    chown "$user:$user" "$DATA_DIR"
+    mkdir -p "$data_dir"
+    chown "$user:$user" "$data_dir"
 
-    cat > "$SERVICE_FILE" << 'UNIT'
+    cat > "$service_file" << UNIT
 [Unit]
-Description=GhostTerm - Web-based Multi-Terminal Server
+Description=Loci Terminal - Web-based Multi-Terminal Server
 After=network.target
 
 [Service]
 Type=simple
 User=%i
-ExecStart=/usr/local/bin/ghostterm --port 8080 --data-dir /var/lib/ghostterm
+ExecStart=/usr/local/bin/ghostterm --port ${PORT} --data-dir /var/lib/ghostterm
 Restart=on-failure
 RestartSec=5
+Environment=LANG=en_US.UTF-8
 
 [Install]
 WantedBy=multi-user.target
@@ -101,31 +91,96 @@ UNIT
     systemctl start "ghostterm@${user}"
 
     info "Service started: ghostterm@${user}"
-    info "Check status: systemctl status ghostterm@${user}"
 }
+
+# ── macOS (launchd) ──────────────────────────────────────────────
+
+setup_launchd() {
+    local user="$1"
+    local data_dir="${HOME}/.local/share/ghostterm"
+    local plist_dir="${HOME}/Library/LaunchAgents"
+    local plist_file="${plist_dir}/com.loci-terminal.ghostterm.plist"
+    local log_dir="${HOME}/Library/Logs/ghostterm"
+
+    info "Setting up launchd service for user: ${user}"
+
+    mkdir -p "$data_dir" "$plist_dir" "$log_dir"
+
+    cat > "$plist_file" << PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.loci-terminal.ghostterm</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/ghostterm</string>
+        <string>--port</string>
+        <string>${PORT}</string>
+        <string>--data-dir</string>
+        <string>${data_dir}</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>${log_dir}/stdout.log</string>
+    <key>StandardErrorPath</key>
+    <string>${log_dir}/stderr.log</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>LANG</key>
+        <string>en_US.UTF-8</string>
+    </dict>
+</dict>
+</plist>
+PLIST
+
+    launchctl unload "$plist_file" 2>/dev/null || true
+    launchctl load -w "$plist_file"
+
+    info "Service started via launchd"
+    info "Logs: ${log_dir}/"
+}
+
+# ── Uninstall helpers ────────────────────────────────────────────
+
+print_uninstall_info() {
+    echo ""
+    if [[ "$OS" == "Darwin" ]]; then
+        info "To uninstall:"
+        info "  launchctl unload ~/Library/LaunchAgents/com.loci-terminal.ghostterm.plist"
+        info "  rm ~/Library/LaunchAgents/com.loci-terminal.ghostterm.plist"
+        info "  sudo rm /usr/local/bin/ghostterm"
+    else
+        info "To uninstall: sudo bash deploy/uninstall.sh"
+    fi
+}
+
+# ── Main ─────────────────────────────────────────────────────────
 
 print_usage() {
     echo ""
     echo "Usage:"
-    echo "  sudo bash install.sh [OPTIONS]"
+    echo "  sudo bash install.sh [OPTIONS]       # Linux"
+    echo "  bash install.sh [OPTIONS]             # macOS"
     echo ""
     echo "Options:"
-    echo "  --user USER    System user to run as (default: current SUDO_USER)"
+    echo "  --user USER    System user to run as (default: current user)"
     echo "  --port PORT    Server port (default: 8080)"
-    echo "  --docker       Install Docker mode only (skip systemd)"
     echo "  --help         Show this help"
     echo ""
 }
 
 main() {
     local user="${SUDO_USER:-$(whoami)}"
-    local docker_only=false
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --user)  user="$2"; shift 2 ;;
             --port)  PORT="$2"; shift 2 ;;
-            --docker) docker_only=true; shift ;;
             --help)  print_usage; exit 0 ;;
             *)       error "Unknown option: $1" ;;
         esac
@@ -137,36 +192,53 @@ main() {
     echo "  ╚═══════════════════════════════════╝"
     echo ""
 
-    if $docker_only; then
-        info "Docker mode: use 'docker compose up -d' in the repo directory."
-        exit 0
+    info "OS: ${OS}"
+    info "User: ${user}"
+    info "Port: ${PORT}"
+    echo ""
+
+    if [[ "$OS" == "Linux" && $EUID -ne 0 ]]; then
+        error "On Linux, run as root: sudo bash install.sh"
     fi
 
-    check_root
     check_deps
-
-    info "Target user: ${user}"
-    info "Port: ${PORT}"
-
     build_from_source
 
-    # Update port in service if non-default
-    if [[ "$PORT" != "8080" ]]; then
-        sed -i "s/--port 8080/--port ${PORT}/" "$SERVICE_FILE" 2>/dev/null || true
-    fi
-
-    setup_systemd "$user"
+    case "$OS" in
+        Linux)
+            setup_systemd "$user"
+            ;;
+        Darwin)
+            setup_launchd "$user"
+            ;;
+        *)
+            warn "Unknown OS: ${OS}. Binary installed but no service configured."
+            warn "Run manually: ghostterm --port ${PORT}"
+            ;;
+    esac
 
     echo ""
     info "========================================="
     info " Installation complete!"
     info " Open http://localhost:${PORT}"
-    info ""
-    info " Commands:"
-    info "   systemctl status ghostterm@${user}"
-    info "   systemctl restart ghostterm@${user}"
-    info "   journalctl -u ghostterm@${user} -f"
     info "========================================="
+
+    if [[ "$OS" == "Darwin" ]]; then
+        echo ""
+        info "Management:"
+        info "  launchctl list | grep ghostterm     # check status"
+        info "  launchctl stop com.loci-terminal.ghostterm   # stop"
+        info "  launchctl start com.loci-terminal.ghostterm  # start"
+        info "  tail -f ~/Library/Logs/ghostterm/stdout.log  # logs"
+    else
+        echo ""
+        info "Management:"
+        info "  systemctl status ghostterm@${user}"
+        info "  systemctl restart ghostterm@${user}"
+        info "  journalctl -u ghostterm@${user} -f"
+    fi
+
+    print_uninstall_info
 }
 
 main "$@"
