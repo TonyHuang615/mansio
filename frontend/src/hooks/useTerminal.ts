@@ -21,6 +21,49 @@ interface TerminalInstance {
 
 const instances = new Map<string, TerminalInstance>();
 
+// True when the container has real layout dimensions (i.e. is currently
+// `display: block` and laid out). Calling fit() against a 0x0 container
+// shrinks the PTY to 2x1, corrupts xterm's reflow, and (with WebGL) wipes
+// the framebuffer — that's what made the first workspace go black on return.
+function hasRealSize(el: HTMLElement | null | undefined): boolean {
+  if (!el) return false;
+  return el.offsetWidth > 0 && el.offsetHeight > 0;
+}
+
+function fitAndSendResize(inst: TerminalInstance, container: HTMLElement) {
+  if (!hasRealSize(container)) return;
+  inst.fitAddon.fit();
+  const dims = inst.fitAddon.proposeDimensions();
+  if (dims && inst.ws?.readyState === WebSocket.OPEN) {
+    inst.ws.send(JSON.stringify({ type: 'resize', cols: dims.cols, rows: dims.rows }));
+  }
+}
+
+// Factory exported for testing — returns the ResizeObserver callback so
+// tests can drive it without a real ResizeObserver.
+export function createResizeHandler(
+  inst: TerminalInstance,
+  container: HTMLElement,
+): ResizeObserverCallback {
+  let wasHidden = false;
+  return (entries) => {
+    for (const entry of entries) {
+      const { width, height } = entry.contentRect;
+      if (width <= 0 || height <= 0) {
+        wasHidden = true;
+        continue;
+      }
+      fitAndSendResize(inst, container);
+      if (wasHidden) {
+        wasHidden = false;
+        // WebGL framebuffer can lose its contents while the canvas was 0x0;
+        // force xterm to repaint its current buffer state.
+        inst.terminal.refresh(0, Math.max(0, inst.terminal.rows - 1));
+      }
+    }
+  };
+}
+
 export function useTerminal({ sessionId, containerRef, theme }: UseTerminalOptions) {
   const activeTheme = theme ?? darkTerminalTheme;
   const wsRef = useRef<WebSocket | null>(null);
@@ -32,13 +75,20 @@ export function useTerminal({ sessionId, containerRef, theme }: UseTerminalOptio
     ws.binaryType = 'arraybuffer';
 
     ws.onopen = () => {
-      const fitAddon = instances.get(sid)?.fitAddon;
-      if (fitAddon) {
-        fitAddon.fit();
-        const dims = fitAddon.proposeDimensions();
-        if (dims) {
-          ws.send(JSON.stringify({ type: 'resize', cols: dims.cols, rows: dims.rows }));
-        }
+      const inst = instances.get(sid);
+      if (!inst) return;
+      const container = inst.terminal.element?.parentElement;
+      if (!hasRealSize(container)) {
+        // The session is currently hidden (display:none in the inactive
+        // workspace). Don't fit — that would tell the server PTY to shrink
+        // to 2x1 and corrupt its content. fit() will run via the resize
+        // observer when this session becomes visible again.
+        return;
+      }
+      inst.fitAddon.fit();
+      const dims = inst.fitAddon.proposeDimensions();
+      if (dims) {
+        ws.send(JSON.stringify({ type: 'resize', cols: dims.cols, rows: dims.rows }));
       }
     };
 
@@ -143,19 +193,13 @@ export function useTerminal({ sessionId, containerRef, theme }: UseTerminalOptio
       }
     }
 
-    inst.fitAddon.fit();
+    fitAndSendResize(inst, container);
 
     if (!inst.ws || inst.ws.readyState === WebSocket.CLOSED) {
       connect(inst.terminal, sessionId);
     }
 
-    const resizeObserver = new ResizeObserver(() => {
-      inst!.fitAddon.fit();
-      const dims = inst!.fitAddon.proposeDimensions();
-      if (dims && inst!.ws?.readyState === WebSocket.OPEN) {
-        inst!.ws.send(JSON.stringify({ type: 'resize', cols: dims.cols, rows: dims.rows }));
-      }
-    });
+    const resizeObserver = new ResizeObserver(createResizeHandler(inst, container));
     resizeObserver.observe(container);
 
     return () => {
