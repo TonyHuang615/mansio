@@ -15,13 +15,18 @@ COPY . .
 COPY --from=frontend-builder /app/frontend/dist ./cmd/ghostterm/frontend/dist
 RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /ghostterm ./cmd/ghostterm
 
-# Stage 3: Runtime (Ubuntu)
+# Stage 3: Runtime (Ubuntu + dev tools)
 FROM ubuntu:24.04
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        bash zsh tmux sudo curl git ca-certificates \
-    && rm -rf /var/lib/apt/lists/* \
+        bash zsh tmux sudo curl wget git ca-certificates \
+        build-essential python3 python3-pip \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && apt-get clean && rm -rf /var/lib/apt/lists/* \
     && useradd -m -s /bin/bash ghostterm \
     && echo "ghostterm ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+
 WORKDIR /home/ghostterm
 COPY --from=go-builder /ghostterm /usr/local/bin/ghostterm
 RUN mkdir -p /data && chown ghostterm:ghostterm /data
