@@ -13,8 +13,8 @@
 [![tmux](https://img.shields.io/badge/tmux-persistent-1BB91F.svg)](https://github.com/tmux/tmux)
 [![License: GPL v3+](https://img.shields.io/badge/License-GPLv3+-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
-> **A web-based, multi-terminal server with persistent tmux sessions.**
-> Open your machine's terminal in any browser — desktop or mobile — close the tab, come back hours later, and find every process exactly where you left it.
+> **Persistent workspace for AI coding agents.**
+> Run Claude Code (or any long-lived shell process) on a server, close the browser, hop devices — and come back hours later to find your agent, your build, your `vim` exactly where you left them. tmux on the inside, a real UI on the outside.
 
 [Quick Start](#quick-start) • [Usage Guide](#usage-guide) • [Deployment](#deployment) • [Architecture](#architecture) • [Troubleshooting](#troubleshooting)
 
@@ -33,6 +33,16 @@
   <br />
   <em>Mobile — collapsible sidebar, IME-safe input bar, on-screen modifier keys.</em>
 </p>
+
+---
+
+## Why I built this
+
+I run **Claude Code** (and other AI coding agents) on a remote dev box. The work is long: multi-step refactors, slow builds, agent loops that chew on a problem for an hour. But every time I closed the browser tab, walked away from my desk, or jumped to my phone, the workflow broke — the SSH session died, the scrollback evaporated, and whatever the agent was in the middle of got yanked out from under it.
+
+So I wrapped `tmux` in a real browser UX. **LociTerm gives the agent a persistent home** — a workspace that doesn't care whether I'm at my desk, on my phone, or rebooting the laptop. Close the tab. Walk to a meeting. Reopen on a different device. The agent is still running, the scrollback is intact, the prompt is exactly where I left it.
+
+That's the whole pitch: **a place your agent can live, not just a session it borrows.**
 
 ---
 
