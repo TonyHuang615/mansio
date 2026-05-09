@@ -2,26 +2,176 @@
 
 [English](README.md) | [中文](README.zh-CN.md) | **한국어**
 
-영구 세션을 지원하는 웹 기반 멀티 터미널 서버. 데스크톱/모바일 어떤 브라우저에서도 서버 터미널에 접속할 수 있습니다. Linux, macOS에서 네이티브 설치 또는 Docker로 셀프 호스팅이 가능합니다.
+[![Go](https://img.shields.io/badge/Go-1.22+-00ADD8.svg?logo=go)](https://go.dev/)
+[![React](https://img.shields.io/badge/React-19-61DAFB.svg?logo=react)](https://react.dev/)
+[![tmux](https://img.shields.io/badge/tmux-persistent-1BB91F.svg)](https://github.com/tmux/tmux)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
 
-## 주요 기능
+> **영구 tmux 세션을 지원하는 웹 기반 멀티 터미널 서버.**
+> 데스크톱이든 모바일이든 브라우저에서 내 머신의 터미널을 열고, 탭을 닫았다 몇 시간 뒤 다시 열어도 모든 프로세스가 그대로 살아 있습니다.
 
-- **워크스페이스와 탭** — 터미널을 워크스페이스로 그룹화하고, 각 워크스페이스에 여러 탭을 둘 수 있습니다. 우클릭으로 이름 변경/삭제. 사이드바에는 각 워크스페이스에서 마지막으로 활성화된 터미널의 작업 디렉토리(CWD)가 함께 표시됩니다.
-- **영구 세션 (tmux)** — 브라우저를 닫아도 프로세스는 계속 실행됩니다. 재접속 시 스크롤백 그대로 복원되며, 서버 재시작 후에도 세션이 살아 있습니다.
-- **즉시 워크스페이스 전환** — 모든 터미널이 백그라운드에 마운트된 상태로 유지됩니다 (VS Code 방식 detach/attach). 워크스페이스를 전환해도 즉각 복귀하며, 숨겨진 터미널을 0×0으로 fit 하지 않아 레이아웃이 깨지지 않습니다.
-- **마우스 모드** — 터미널에서 스크롤, 드래그 선택, 클릭이 네이티브로 동작합니다 (tmux mouse mode 기본 활성화).
-- **단일 바이너리** — React 프론트엔드를 임베드한 ~10MB Go 바이너리. 외부 의존성은 `tmux` 뿐입니다.
-- **라이트 / 다크 / 시스템 테마** — OS 설정을 자동으로 따라가거나 라이트/다크에 고정. ANSI 팔레트는 양쪽 배경에서 모두 ≥4.5:1 대비를 만족하도록 튜닝되어 있습니다.
-- **드래그 앤 드롭 업로드** — 파일을 터미널에 드롭하면 업로드되고, 결과 경로가 프롬프트에 자동으로 붙여 넣어집니다.
-- **Shift+Enter 줄바꿈** — 명령을 실행하지 않고 리터럴 개행만 입력합니다 (REPL, AI CLI에서 멀티라인 입력에 유용).
-- **모바일 친화적 UI** — 좁은 화면에서는 사이드바가 접히고, 터치에 적합한 히트 영역을 제공합니다.
-- **비밀번호 인증** — bcrypt 해시 + HttpOnly 세션 쿠키. 첫 실행 시 설정합니다.
-- **CJK 지원** — 한국어/중국어/일본어와 Box-drawing 문자를 포함한 전체 유니코드 지원.
-- **두 가지 배포 모드** — 네이티브 설치 (SSH 수준의 호스트 접근) 또는 Docker (격리 환경).
+[빠른 시작](#빠른-시작) • [사용법](#사용법) • [배포](#배포) • [아키텍처](#아키텍처) • [트러블슈팅](#트러블슈팅)
+
+---
+
+## 왜 LociTerm인가?
+
+- **브라우저에서 동작하는 셀프호스트 SSH 대체** — 클라이언트 설치 없이 URL만 있으면 됩니다.
+- **모든 것에서 살아남음** — 브라우저를 닫아도, 서버를 재시작해도, 네트워크를 바꿔도 셸/`vim`/실행 중인 `npm run build`가 `tmux` 덕분에 그대로 유지됩니다.
+- **단일 바이너리** — React 프론트엔드를 임베드한 ~10 MB Go 바이너리. 런타임 의존성은 `tmux`뿐입니다.
+- **모바일에서도 동작** — 터치 친화적인 UI, 전용 모바일 입력 바, IME 안전 (한/중/일).
+- **두 가지 배포 모드** — 풀 호스트 접근(SSH 동등)을 원하면 네이티브 설치, 격리된 샌드박스를 원하면 Docker.
+
+---
+
+## 빠른 시작
+
+### 60초 안에 브라우저에서 터미널 띄우기
+
+```bash
+git clone https://github.com/Younkyum/Loci-Terminal.git
+cd Loci-Terminal
+
+# Linux
+sudo bash deploy/install.sh
+
+# macOS
+bash deploy/install.sh
+```
+
+**http://localhost:8080** 접속, 첫 화면에서 비밀번호 설정. 끝.
+
+> **호스트를 건드리지 않고 시도해보고 싶다면** Docker로:
+> ```bash
+> docker compose up -d --build
+> ```
+
+---
+
+## 사용법
+
+여기서는 매일 사용하는 동작을 모두 다룹니다. 필요한 부분만 점프해서 보세요.
+
+### 1. 첫 실행 — 비밀번호 설정
+
+`http://localhost:8080`에 처음 접속하면 비밀번호를 만드는 셋업 화면이 뜹니다. 비밀번호는 서버에 bcrypt 해시로 저장되며, 이후 로그인은 HttpOnly 세션 쿠키(7일 만료)로 처리됩니다.
+
+> **네이티브 설치:** 비밀번호가 호스트의 SSH 동급 접근을 보호합니다. 강한 비밀번호를 사용하세요.
+> **Docker 모드:** 컨테이너는 격리되지만, 마운트한 볼륨에 대한 접근은 비밀번호로 보호해야 합니다.
+
+로그인 후 메인 UI:
+
+```
+┌──────────────┬──────────────────────────────────────────┐
+│  Workspaces  │  ┌──┬──┬──┬──┐                         │
+│  ─────────   │  │T1│T2│T3│ +│   탭바                   │
+│  ▸ default   │  └──┴──┴──┴──┘                         │
+│    work      │                                          │
+│    server    │   $ ls                                   │
+│              │   README.md  go.mod  internal/           │
+│              │   $ █                                    │
+│  [☀ ☾ ⚙]    │                                          │
+└──────────────┴──────────────────────────────────────────┘
+   사이드바             터미널 패널
+```
+
+### 2. 워크스페이스와 탭
+
+워크스페이스는 최상위 그룹(왼쪽 사이드바)이며, 각 워크스페이스는 1개 이상의 탭(터미널 패널 위쪽)을 가집니다. 모든 탭은 자체 영구 `tmux` 세션입니다.
+
+| 동작 | 방법 |
+|---|---|
+| **워크스페이스 만들기** | 사이드바 상단의 **+** 클릭 |
+| **워크스페이스 이름 변경 / 삭제** | 워크스페이스 이름 우클릭(모바일은 길게 누르기) → 컨텍스트 메뉴 |
+| **워크스페이스 전환** | 사이드바의 다른 워크스페이스 클릭 — 즉시 전환, 리핏 없음, 스크롤백 유지 |
+| **탭 만들기** | 탭바 우측 끝의 **+** 클릭 |
+| **탭 이름 변경 / 삭제** | 탭 우클릭(모바일은 길게 누르기) → 컨텍스트 메뉴 |
+| **탭 전환** | 탭바에서 다른 탭 클릭 |
+
+사이드바에는 각 워크스페이스의 **마지막 활성 터미널 CWD**가 부제로 표시됩니다. 페이지가 보이는 동안 5초마다 폴링됩니다. 한눈에 적절한 프로젝트를 고르는 데 유용합니다.
+
+> **즉시 전환:** 모든 열린 터미널은 백그라운드에 마운트된 상태로 유지됩니다(VS Code 방식 detach/attach). 워크스페이스 전환이 즉각적이며, 숨겨진 터미널을 0×0으로 fit 하지 않고, 스크롤백을 잃지 않습니다.
+
+### 3. 영구 세션 — 실제 동작 방식
+
+모든 탭은 `lt_<id>` 이름의 tmux 세션으로 백킹됩니다. 즉:
+
+- **브라우저 탭 닫기** → tmux 안의 프로세스는 계속 실행.
+- **브라우저 다시 열기** → 풀 스크롤백과 함께 재접속.
+- **서버 재시작** *(네이티브 설치)* → tmux는 Go 프로세스와 별개로 살아 있음. 아무 일도 없었다는 듯 재접속.
+- **컨테이너 재시작** *(Docker)* → tmux가 컨테이너와 함께 죽음. 메타데이터는 유지되지만 실행 중이던 프로세스는 사라집니다.
+- **탭 삭제** → `tmux kill-session` 실행, 프로세스 종료.
+
+장시간 빌드, `vim` 세션, `htop`, 인터랙티브 REPL — 그대로 두고 자리를 떠났다가 돌아와도 됩니다.
+
+### 4. 키보드와 마우스
+
+| 입력 | 효과 |
+|---|---|
+| **Shift + Enter** | 명령을 실행하지 않고 리터럴 개행만 입력 (REPL/AI CLI에서 멀티라인 입력에 유용) |
+| **마우스 휠** | 터미널 스크롤백 스크롤 (tmux mouse mode 기본 활성화) |
+| **클릭 + 드래그** | 터미널에서 텍스트 선택 |
+| **탭/워크스페이스 우클릭** | 컨텍스트 메뉴 (이름 변경 / 삭제) |
+| **사이드바와 터미널 사이 핸들 드래그** | 사이드바 폭 조절 (140–400 px) |
+
+> **복사 / 붙여넣기:** 대부분의 브라우저는 선택된 텍스트에 대해 `Cmd+C` / `Ctrl+C`를 인식합니다. `Cmd+V` / `Ctrl+V`로 프롬프트에 붙여 넣으세요. 셸이 `Ctrl+C`를 SIGINT로 처리하고 있다면, 먼저 선택한 뒤 시스템 메뉴로 복사하세요.
+
+### 5. 드래그 앤 드롭 파일 업로드
+
+터미널 패널에 파일(또는 여러 개)을 드롭하세요:
+
+1. 파일이 `multipart/form-data`로 `/api/v1/sessions/:id/upload`에 POST 됩니다.
+2. `~/uploads/` 아래에 충돌 회피 네이밍으로 저장됩니다 (Docker 컨테이너 내부 동등 경로 포함).
+3. 결과 **절대 경로**가 프롬프트에 자동으로 붙여 넣어져 다음 명령에 바로 사용할 수 있습니다.
+
+```
+$ █
+   [image.png 드래그 앤 드롭]
+$ /home/lociterm/uploads/image.png█
+   [이어서 입력:]
+$ python process.py /home/lociterm/uploads/image.png
+```
+
+기본 한도: **업로드당 100 MiB**. 경로 탈출과 NUL 바이트는 서버에서 거부합니다.
+
+### 6. 테마 — 라이트, 다크, 시스템
+
+사이드바 하단에 세 개의 아이콘:
+
+- **☀ Light** — 라이트 모드 고정
+- **☾ Dark** — 다크 모드 고정
+- **⚙ System** — OS 환경설정 따라가기 (기본값)
+
+UI와 xterm.js 팔레트 모두 ≥4.5:1 WCAG 대비를 만족하도록 튜닝되어 있고, `theme.test.ts`에서 검증됩니다.
+
+### 7. 모바일
+
+좁은 화면(<640 px)에서는:
+
+- 사이드바가 탭바 상단의 햄버거 버튼 뒤로 접힙니다.
+- 햄버거를 탭하면 백드롭 오버레이와 함께 사이드바가 왼쪽에서 슬라이드 인.
+- 터미널 아래에 **전용 모바일 입력 바**가 표시됩니다. xterm.js의 hidden textarea를 우회해 IME 조합(한/중/일) 및 키보드 자동완성이 정상 동작합니다.
+- 모든 탭 영역은 최소 44 × 44 px.
+- iOS 포커스 줌인이 억제되어 있어(폰트 16 px + scale 트릭) 포커스마다 페이지가 확대되지 않습니다.
+
+### 8. 로그아웃
+
+사이드바의 사용자/전원 아이콘을 클릭하거나 `/api/v1/auth/logout`을 직접 호출하세요. 서버 측 세션이 즉시 무효화되고 쿠키가 클리어됩니다.
+
+---
 
 ## 배포
 
-### 방법 1: 네이티브 설치 (Linux systemd 또는 macOS launchd)
+LociTerm은 두 가지 배포 모드가 있습니다. 하나를 고르세요:
+
+| | **네이티브 설치** | **Docker** |
+|---|---|---|
+| 접근 수준 | 풀 호스트 (SSH 동등) | 격리된 컨테이너 |
+| 서버 재시작 시 tmux 생존 | ✅ 예 | ❌ 아니오 (컨테이너와 함께 종료) |
+| 적합한 용도 | 개인 개발 머신, 홈 서버 | 샌드박스, 데모, 신뢰 불가 사용 |
+| 디스크 풋프린트 | ~10 MB 바이너리 + tmux | ~1 GB 이미지 (Ubuntu + Node + Python) |
+
+### 방법 1: 네이티브 설치
 
 웹 터미널이 직접 로그인한 것과 동일한 환경을 가집니다 — 같은 파일, 같은 도구, 같은 환경.
 
@@ -40,9 +190,18 @@ bash deploy/install.sh
 
 설치 스크립트는 OS를 감지하고, 소스에서 빌드하고, 바이너리를 `/usr/local/bin/lociterm`에 설치한 뒤 서비스를 등록합니다.
 
+**설치 스크립트 플래그:**
+
+| 플래그 | 설명 | 기본값 |
+|---|---|---|
+| `--port PORT` | 서버 포트 | `8080` |
+| `--user USER` | 실행할 시스템 사용자 | 현재 사용자 |
+| `--help` | 도움말 표시 | — |
+
 #### Linux (systemd)
 
 ```bash
+# 상태 / 재시작 / 로그
 systemctl status lociterm@$(whoami)
 systemctl restart lociterm@$(whoami)
 journalctl -u lociterm@$(whoami) -f
@@ -50,11 +209,14 @@ journalctl -u lociterm@$(whoami) -f
 # 포트 변경
 sudo bash deploy/install.sh --port 3000
 
-# 제거
+# 제거 (데이터 디렉토리 유지)
 sudo bash deploy/uninstall.sh
+
+# 데이터까지 삭제
+sudo rm -rf /var/lib/lociterm
 ```
 
-데이터 디렉토리: `/var/lib/lociterm`
+데이터 디렉토리: `/var/lib/lociterm` · 서비스 유닛: `/etc/systemd/system/lociterm@.service`
 
 #### macOS (launchd)
 
@@ -64,19 +226,27 @@ launchctl stop  com.loci-terminal.lociterm           # 중지
 launchctl start com.loci-terminal.lociterm           # 시작
 tail -f ~/Library/Logs/lociterm/stdout.log           # 로그
 
-# 제거
+# 제거 (데이터 + 로그 유지)
 bash deploy/uninstall.sh
 ```
 
-데이터 디렉토리: `~/.local/share/lociterm` · 로그: `~/Library/Logs/lociterm/`
+데이터 디렉토리: `~/.local/share/lociterm` · 로그: `~/Library/Logs/lociterm/` · plist: `~/Library/LaunchAgents/com.loci-terminal.lociterm.plist`
 
 > **macOS Full Disk Access:** macOS는 `~/Documents`, `~/Desktop` 등에 대한 접근을 샌드박싱합니다. LociTerm은 첫 실행 시 `/api/v1/health`를 호출해 권한을 확인하고, 접근이 막혀 있으면 웹 UI에 전체 화면 모달로 단계별 안내를 표시합니다 (System Settings → Privacy & Security → Full Disk Access → `/usr/local/bin/lociterm` 추가). 설치 스크립트도 해당 시스템 설정 화면을 자동으로 열어줍니다.
 
-**Cloudflare Tunnel:** 별도 설정 없이 동작합니다. 터널을 `http://localhost:8080`에 연결하면 Cloudflare가 HTTPS와 WebSocket 프록시를 자동 처리합니다.
+#### Cloudflare Tunnel
 
-### 방법 2: Docker (격리 환경)
+별도 설정 없이 동작합니다. 터널을 `http://localhost:8080`에 연결하면 Cloudflare가 HTTPS와 WebSocket 프록시를 자동 처리합니다.
 
-Node.js 20, Python 3, 빌드 도구가 미리 설치된 Ubuntu 24.04 컨테이너에서 실행됩니다. 홈 디렉토리는 Docker 볼륨으로 컨테이너 재시작 시에도 유지됩니다.
+```bash
+cloudflared tunnel --url http://localhost:8080
+```
+
+영구 터널이 필요하면 Cloudflare의 Named Tunnel 문서를 따라 호스트네임을 `http://localhost:8080`으로 라우팅하세요.
+
+### 방법 2: Docker
+
+**Node.js 20**, **Python 3**, **build-essential**, **zsh**, **git**, **tmux**, CJK 폰트가 미리 설치된 **Ubuntu 24.04** 격리 컨테이너에서 실행됩니다. 홈 디렉토리는 Docker 볼륨으로 영속화됩니다.
 
 ```bash
 git clone https://github.com/Younkyum/Loci-Terminal.git
@@ -86,19 +256,52 @@ docker compose up -d --build
 ```
 
 **컨테이너 재시작 시 유지되는 것:**
-- `/home/lociterm` — 설치한 도구, 프로젝트 파일, 셸 설정 (Docker 볼륨)
-- `/data` — 워크스페이스/세션 메타데이터 (Docker 볼륨)
+- `/home/lociterm` → 설치한 도구, 프로젝트 파일, 셸 설정 (볼륨 `lociterm-home`)
+- `/data` → 워크스페이스/세션 메타데이터 (볼륨 `lociterm-data`)
 
 **유지되지 않는 것:**
 - tmux 세션 (실행 중 프로세스) — 컨테이너 재시작 시 종료
-- `apt`로 설치한 시스템 패키지 — Dockerfile에 추가해야 영구 반영
+- `apt`로 설치한 시스템 패키지 — 영구 반영하려면 `Dockerfile`에 추가
 
-### CLI 옵션
+**자주 쓰는 명령:**
+
+```bash
+docker compose logs -f               # 로그 팔로우
+docker compose restart               # 재시작 (tmux 손실)
+docker compose down                  # 중지 + 제거 (볼륨 유지)
+docker compose down -v               # 중지 + 제거 + 모든 데이터 삭제
+docker compose exec lociterm bash    # 컨테이너 내부 셸 접속
+```
+
+### CLI 옵션 (바이너리 자체)
 
 | 플래그 | 설명 | 기본값 |
-|--------|------|--------|
+|---|---|---|
 | `--port` | 서버 포트 | `8080` |
 | `--data-dir` | SQLite 데이터베이스 디렉토리 | `./data` |
+
+직접 실행:
+
+```bash
+./lociterm --port 9000 --data-dir /tmp/lociterm-data
+```
+
+---
+
+## 트러블슈팅
+
+| 증상 | 원인 / 해결 |
+|---|---|
+| **웹 UI에 "Permission Required" 모달 (macOS)** | System Settings → Privacy & Security → Full Disk Access에 `/usr/local/bin/lociterm` 추가. "I've fixed it — Check again" 클릭. |
+| **`systemctl status lociterm@<user>` 가 실패 표시** | `journalctl -u lociterm@<user> -e`로 실제 에러 확인. 흔한 원인: 8080 포트 점유 — `--port`로 다시 설치. |
+| **Docker 재시작 후 탭이 비어있음** | 정상 동작 — tmux는 컨테이너와 함께 죽습니다. tmux를 재시작에서도 유지하려면 네이티브 설치를 사용하세요. |
+| **붙여넣기 / 클립보드가 막힘** | 브라우저 권한 문제. 일부 브라우저는 Clipboard API에 HTTPS를 요구합니다. Cloudflare Tunnel로 프론트하세요. |
+| **iOS에서 포커스 시 줌인** | 이미 완화됨 (16 px 폰트 + scale). 그래도 보인다면 페이지 강제 새로고침. 이전 빌드가 캐시된 상태일 수 있음. |
+| **CJK 문자가 □로 표시됨** | 네이티브 설치: OS에 CJK 폰트 설치. Docker는 이미 `fonts-noto-cjk` 포함. |
+| **"WebSocket connection failed"** | 리버스 프록시가 `Upgrade` / `Connection` 헤더를 포워딩하는지 확인. Cloudflare Tunnel은 기본으로 처리합니다. |
+| **비밀번호 분실** | 네이티브: 서비스 중지 후 `<data-dir>/lociterm.db`의 비밀번호 행 삭제(또는 DB 통째로 삭제 — 메타데이터까지 손실), 재시작. Docker: `docker compose down -v && docker compose up -d --build`. |
+
+---
 
 ## 아키텍처
 
@@ -120,7 +323,7 @@ docker compose up -d --build
 ### 기술 스택
 
 | 계층 | 기술 |
-|------|------|
+|---|---|
 | 프론트엔드 | React 19, TypeScript, xterm.js, Zustand, Vite |
 | 백엔드 | Go (stdlib `net/http`), gorilla/websocket, creack/pty |
 | 영속성 | tmux (세션), SQLite via `modernc.org/sqlite` (메타데이터) |
@@ -146,17 +349,13 @@ tmux 서버는 Go 프로세스와 독립적으로 동작합니다. Go 서버가 
 하나의 연결에서 두 종류의 프레임을 사용합니다:
 
 | 방향 | 타입 | 내용 |
-|------|------|------|
+|---|---|---|
 | 클라이언트 → 서버 | Binary | 터미널 stdin (키 입력) |
 | 서버 → 클라이언트 | Binary | 터미널 stdout (출력) |
 | 클라이언트 → 서버 | Text (JSON) | `{ type: "resize", cols, rows }` |
 | 서버 → 클라이언트 | Text (JSON) | `{ type: "attached" }`, `{ type: "pong" }` |
 
 Binary 프레임은 인코딩 오버헤드 없이 터미널 I/O를 직접 전달합니다.
-
-### 파일 업로드
-
-터미널 패널에 파일을 드롭하면 `multipart/form-data`로 `/api/v1/sessions/:id/upload`에 POST 되고, `~/uploads/` 아래에 저장됩니다 (이름 충돌 시 자동 회피). 저장된 절대 경로가 터미널에 붙여 넣어져 바로 다음 명령에 활용할 수 있습니다. 기본 한도: **업로드당 100 MiB**.
 
 ### REST API
 
@@ -182,47 +381,52 @@ POST   /api/v1/sessions/:id/upload        # multipart/form-data 파일 업로드
 GET    /api/v1/ws/terminal/:sessionId     # WebSocket 터미널
 ```
 
+---
+
 ## 프로젝트 구조
 
 ```
 loci-terminal/
 ├── cmd/lociterm/main.go              # 진입점, embed.FS, graceful shutdown
 ├── internal/
-│   ├── server/                        # HTTP 라우팅, 인증 미들웨어, /health
-│   ├── api/                           # REST 핸들러 (workspace, session, auth, upload)
-│   ├── ws/                            # WebSocket 업그레이드 + PTY 브릿지
-│   ├── tmux/                          # tmux 세션 라이프사이클 관리
-│   ├── store/                         # SQLite 영속성 + 마이그레이션
-│   └── model/                         # 데이터 구조체
+│   ├── server/                       # HTTP 라우팅, 인증 미들웨어, /health
+│   ├── api/                          # REST 핸들러 (workspace, session, auth, upload)
+│   ├── ws/                           # WebSocket 업그레이드 + PTY 브릿지
+│   ├── tmux/                         # tmux 세션 라이프사이클 관리
+│   ├── store/                        # SQLite 영속성 + 마이그레이션
+│   └── model/                        # 데이터 구조체
 ├── frontend/src/
 │   ├── components/
-│   │   ├── Auth/LoginForm.tsx         # 로그인/설정 폼
-│   │   ├── Sidebar/Sidebar.tsx        # 워크스페이스 목록 + 테마 토글 + 컨텍스트 메뉴
-│   │   └── Terminal/                  # TabBar, TerminalPanel, TerminalView (드롭 영역)
+│   │   ├── Auth/LoginForm.tsx        # 로그인/설정 폼
+│   │   ├── Sidebar/Sidebar.tsx       # 워크스페이스 목록 + 테마 토글 + 컨텍스트 메뉴
+│   │   └── Terminal/                 # TabBar, TerminalPanel, TerminalView, MobileInputBar
 │   ├── hooks/
-│   │   ├── useTerminal.ts             # xterm.js + WebSocket 라이프사이클
-│   │   ├── useEffectiveTheme.ts       # system/light/dark 해석기
-│   │   ├── useMediaQuery.ts           # 모바일 브레이크포인트 감지
-│   │   └── shiftEnter.ts              # Shift+Enter → 리터럴 개행
+│   │   ├── useTerminal.ts            # xterm.js + WebSocket 라이프사이클
+│   │   ├── useEffectiveTheme.ts      # system/light/dark 해석기
+│   │   ├── useMediaQuery.ts          # 모바일 브레이크포인트 감지
+│   │   └── shiftEnter.ts             # Shift+Enter → 리터럴 개행
 │   ├── stores/
-│   │   ├── appStore.ts                # Zustand: 워크스페이스/세션/활성 상태
-│   │   └── themeStore.ts              # 영속화된 테마 모드
-│   ├── api/upload.ts                  # 멀티파트 업로드 클라이언트
+│   │   ├── appStore.ts               # Zustand: 워크스페이스/세션/활성 상태
+│   │   └── themeStore.ts             # 영속화된 테마 모드
+│   ├── api/upload.ts                 # 멀티파트 업로드 클라이언트
 │   └── lib/
-│       ├── theme.ts                   # 라이트/다크 UI 팔레트와 xterm 테마
-│       └── contrast.ts                # WCAG 대비 헬퍼 (테스트에서 사용)
+│       ├── theme.ts                  # 라이트/다크 UI 팔레트와 xterm 테마
+│       └── contrast.ts               # WCAG 대비 헬퍼 (테스트에서 사용)
 ├── deploy/
 │   ├── install.sh                    # 크로스 플랫폼 설치 스크립트 (Linux+macOS)
 │   ├── uninstall.sh                  # 크로스 플랫폼 제거 스크립트
 │   └── lociterm.service              # systemd 유닛 템플릿 (Linux)
-├── Dockerfile                         # 멀티 스테이지 빌드 (Ubuntu 24.04 런타임)
-├── docker-compose.yml                 # Docker 배포 (영구 볼륨 포함)
+├── Dockerfile                        # 멀티 스테이지 빌드 (Ubuntu 24.04 런타임)
+├── docker-compose.yml                # Docker 배포 (영구 볼륨 포함)
 └── Makefile
 ```
+
+---
 
 ## 개발
 
 ```bash
+# 테스트
 make test              # 전체 테스트 (Go + 프론트엔드)
 make test-go           # Go 테스트만
 make test-frontend     # 프론트엔드 테스트만
@@ -233,39 +437,57 @@ make dev-frontend      # 터미널 2: Vite 개발 서버 (프록시)
 
 # 단일 자체 포함 바이너리 빌드
 make build             # → ./lociterm
+
+# 빌드 산출물 정리
+make clean
 ```
+
+Vite 개발 서버는 API와 WebSocket 호출을 `localhost:8080`으로 프록시합니다. 따라서 Go 백엔드를 켜둔 채로 프론트엔드에서 핫 리로드를 즐길 수 있습니다.
+
+---
 
 ## 설계 결정
 
 | 결정 | 이유 |
-|------|------|
-| **Go stdlib `net/http`** | 약 14개 엔드포인트. Go 1.22+ ServeMux가 메서드+경로 라우팅을 기본 지원. |
+|---|---|
+| **Go stdlib `net/http`** | 약 14개 엔드포인트. Go 1.22+ ServeMux가 메서드+경로 라우팅을 기본 지원 — 라우터 의존성 없음. |
 | **modernc.org/sqlite** | 순수 Go 구현, CGo 불필요. 정적 바이너리, 손쉬운 크로스 컴파일. |
 | **tmux 기반 영속성** | 브라우저 종료 + 서버 재시작에도 세션 생존. 독립 프로세스. |
 | **Binary WebSocket 프레임** | 인코딩 오버헤드 제로. 고출력 터미널에 필수. |
 | **HttpOnly 세션 쿠키 (JWT 아님)** | 싱글유저 셀프호스팅에 더 간단하고 취소 가능. |
 | **이펙티브 테마별 xterm 팔레트** | 라이트/다크 테마 모두 `theme.test.ts`에서 ≥4.5:1 대비 검증. |
 | **Ubuntu 24.04 (Docker)** | glibc 기반으로 도구 호환성 확보 (Node.js, AI CLI 등). |
+| **전용 모바일 입력 바** | xterm.js의 hidden textarea가 모바일 키보드 IME 조합을 깨뜨림 — 진짜 `<textarea>`가 가장 깔끔한 해법. |
+
+---
 
 ## 보안 참고사항
 
-- 네이티브 설치는 SSH와 동일한 접근 수준 — 강한 비밀번호 사용
-- 프로덕션에서는 반드시 HTTPS 사용 (Cloudflare Tunnel 권장)
-- 방화벽 또는 VPN으로 포트 접근 제한
-- Docker 모드는 격리 제공 — 볼륨 외부 호스트 파일 접근 불가
-- 업로드는 sanitize 처리됨 (경로 탈출, NUL 바이트 차단)되며 100 MiB 한도
-- 세션은 7일 후 만료. 로그아웃 시 즉시 무효화
+- **네이티브 설치는 SSH와 동일한 접근 수준** — 강한 비밀번호 사용.
+- **프로덕션에서는 반드시 HTTPS 사용** (Cloudflare Tunnel이 가장 쉬운 경로).
+- **포트 접근 제한** — 가능하면 방화벽 또는 VPN 뒤에 둘 것.
+- **Docker 모드는 격리 제공** — 마운트된 볼륨 외부 호스트 파일 접근 불가.
+- **업로드는 sanitize 처리됨** (경로 탈출, NUL 바이트 차단)되며 업로드당 100 MiB 한도.
+- **세션은 7일 후 만료**. 로그아웃 시 즉시 무효화.
+- **비밀번호는 bcrypt 해시** (cost 10). 평문은 저장/로깅되지 않음.
+
+---
 
 ## 로드맵
 
 - [ ] 코드 리뷰 패널 (git diff 뷰어)
-- [ ] 멀티유저 지원
+- [ ] 멀티유저 지원 (사용자별 워크스페이스 격리)
 - [ ] 탭 드래그 정렬
-- [ ] 터미널 스크롤백 검색
+- [ ] 터미널 스크롤백 검색 (Ctrl+Shift+F)
+- [ ] 터미널 분할 패널 (탭 내 horizontal/vertical split)
 - [ ] 커스텀 테마 프리셋
-- [ ] HTTPS/TLS 내장 지원
+- [ ] HTTPS/TLS 내장 지원 (Let's Encrypt 또는 self-signed)
+- [ ] OAuth 로그인 (GitHub, Google)
+- [ ] 2FA (TOTP)
 
 전체 백로그는 [TODO.md](TODO.md) 참조.
+
+---
 
 ## 라이선스
 
