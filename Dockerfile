@@ -21,12 +21,19 @@ FROM ubuntu:24.04
 RUN apt-get update && apt-get install -y --no-install-recommends \
         bash zsh tmux sudo curl wget git ca-certificates \
         build-essential python3 python3-pip \
+        locales fonts-noto-cjk \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
     && apt-get clean && rm -rf /var/lib/apt/lists/* \
+    && sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen \
+    && locale-gen \
     && useradd -m -s /bin/bash ghostterm \
     && echo "ghostterm ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers \
     && touch /home/ghostterm/.zshrc && chown ghostterm:ghostterm /home/ghostterm/.zshrc
+
+ENV LANG=en_US.UTF-8
+ENV LC_ALL=en_US.UTF-8
+ENV LANGUAGE=en_US:en
 
 WORKDIR /home/ghostterm
 COPY --from=go-builder /ghostterm /usr/local/bin/ghostterm

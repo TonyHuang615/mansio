@@ -90,7 +90,7 @@ export function useTerminal({ sessionId, containerRef }: UseTerminalOptions) {
     if (!inst) {
       const terminal = new Terminal({
         theme: terminalTheme,
-        fontFamily: "'JetBrains Mono', 'SF Mono', 'Menlo', monospace",
+        fontFamily: "'JetBrains Mono', 'SF Mono', 'Menlo', 'Noto Sans KR', 'Noto Sans CJK SC', monospace",
         fontSize: 14,
         lineHeight: 1.2,
         cursorBlink: true,
