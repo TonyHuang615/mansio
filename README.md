@@ -2,34 +2,66 @@
 
 [한국어](README.ko.md) | [中文](README.zh-CN.md) | **English**
 
-Web-based multi-terminal server with persistent sessions. Self-hostable via Docker.
+Web-based multi-terminal server with persistent sessions. Access your server's terminal from any browser. Self-hostable via Docker or native installation.
 
 ## Features
 
-- **Workspaces & Tabs** — Organize terminals into persistent workspace groups. Each workspace holds multiple tabs.
+- **Workspaces & Tabs** — Organize terminals into persistent workspace groups. Each workspace holds multiple tabs. Right-click to rename or delete.
 - **Persistent Sessions (tmux)** — Close the browser, your processes keep running. Reconnect anytime with full scrollback restored. Sessions survive both browser disconnects and server restarts.
 - **Single Binary** — ~10MB Go binary with React frontend embedded. No external dependencies except tmux.
-- **Password Authentication** — bcrypt-hashed password with session cookies. Set a password on first launch to protect your terminal.
+- **Password Authentication** — bcrypt-hashed password with session cookies. Set a password on first launch.
+- **CJK Support** — Full Unicode support including Korean, Chinese, Japanese characters and box-drawing glyphs.
+- **Two Deployment Modes** — Native host install (full host access, like SSH) or Docker (isolated environment).
 
-## Quick Start
+## Deployment
 
-### Docker
+### Option 1: Native Host Install (Recommended for full host access)
 
-```bash
-docker compose up -d
-# Open http://localhost:8080
-```
-
-### Build from source
+Your web terminal will have the same access as logging into the server directly — same files, same tools, same environment.
 
 **Prerequisites:** Go 1.22+, Node.js 20+, tmux
 
 ```bash
 git clone https://github.com/Younkyum/Loci-Terminal.git
 cd Loci-Terminal
-make build
-./ghostterm --port 8080
+sudo bash deploy/install.sh
 ```
+
+The install script builds from source, installs the binary, and sets up a systemd service.
+
+```bash
+# Management
+systemctl status ghostterm@$(whoami)
+systemctl restart ghostterm@$(whoami)
+journalctl -u ghostterm@$(whoami) -f
+
+# Custom port
+sudo bash deploy/install.sh --port 3000
+
+# Uninstall
+sudo bash deploy/uninstall.sh
+```
+
+**Cloudflare Tunnel:** Works out of the box. Point your tunnel to `http://localhost:8080` — Cloudflare handles HTTPS and WebSocket proxying automatically.
+
+### Option 2: Docker (Isolated environment)
+
+Runs in an isolated Ubuntu 24.04 container with Node.js 20, Python3, and build tools pre-installed. Home directory is persisted across container restarts via Docker volume.
+
+```bash
+git clone https://github.com/Younkyum/Loci-Terminal.git
+cd Loci-Terminal
+docker compose up -d --build
+# Open http://localhost:8080
+```
+
+**What persists across container restarts:**
+- `/home/ghostterm` — installed tools, project files, shell configs (Docker volume)
+- `/data` — workspace/session metadata (Docker volume)
+
+**What does NOT persist:**
+- tmux sessions (running processes) — killed when container restarts
+- System-level packages installed via `apt` — use Dockerfile to add permanently
 
 ### Options
 
@@ -62,12 +94,12 @@ Browser                            Go Server (single binary)
 | Backend | Go (stdlib net/http), gorilla/websocket, creack/pty |
 | Persistence | tmux (sessions), SQLite via modernc.org/sqlite (metadata) |
 | Auth | bcrypt + session cookie |
-| Deploy | Docker multi-stage build |
+| Deploy | systemd service or Docker multi-stage build (Ubuntu 24.04) |
 
 ### How tmux Persistence Works
 
 ```
-1. Tab created    → tmux new-session -d -s gt_{id}
+1. Tab created    → tmux new-session -d -s gt_{id} -c $HOME
 2. Browser opens  → creack/pty spawns "tmux attach -t gt_{id}"
                     PTY fd is bridged to WebSocket (binary frames)
 3. Browser closes → PTY (attach process) terminates
@@ -76,7 +108,7 @@ Browser                            Go Server (single binary)
 5. Tab deleted    → tmux kill-session -t gt_{id}
 ```
 
-The tmux server runs independently from the Go process. Even if the Go server crashes or restarts, tmux sessions survive.
+The tmux server runs independently from the Go process. Even if the Go server crashes or restarts, tmux sessions survive (native install only — Docker containers lose tmux sessions on restart).
 
 ### WebSocket Protocol
 
@@ -102,12 +134,12 @@ GET    /api/v1/auth/check            # Check auth state
 GET    /api/v1/workspaces            # List workspaces
 POST   /api/v1/workspaces            # Create workspace
 PATCH  /api/v1/workspaces/:id        # Rename workspace
-DELETE /api/v1/workspaces/:id        # Delete workspace (cascades sessions)
+DELETE /api/v1/workspaces/:id        # Delete workspace (cascades sessions + tmux)
 
 GET    /api/v1/workspaces/:wid/sessions   # List sessions
 POST   /api/v1/workspaces/:wid/sessions   # Create session
 PATCH  /api/v1/sessions/:id               # Rename session
-DELETE /api/v1/sessions/:id               # Delete session
+DELETE /api/v1/sessions/:id               # Delete session (kills tmux)
 
 GET    /api/v1/ws/terminal/:sessionId     # WebSocket terminal
 ```
@@ -115,43 +147,29 @@ GET    /api/v1/ws/terminal/:sessionId     # WebSocket terminal
 ## Project Structure
 
 ```
-ghostterm/
+loci-terminal/
 ├── cmd/ghostterm/main.go              # Entrypoint, embed.FS, graceful shutdown
 ├── internal/
-│   ├── server/
-│   │   ├── server.go                  # HTTP routing, auth middleware
-│   │   └── auth.go                    # Session cookie management
-│   ├── api/
-│   │   ├── workspace.go               # Workspace CRUD handlers
-│   │   ├── session.go                 # Session CRUD handlers
-│   │   ├── auth.go                    # Login/setup/logout handlers
-│   │   └── helpers.go                 # JSON response helpers
-│   ├── ws/
-│   │   ├── handler.go                 # WebSocket upgrade + PTY bridge
-│   │   └── protocol.go               # Control message types
-│   ├── tmux/
-│   │   ├── manager.go                 # tmux session lifecycle
-│   │   └── session.go                 # PTY wrapper for tmux attach
-│   ├── store/
-│   │   ├── store.go                   # Store interface
-│   │   └── sqlite.go                  # SQLite implementation + migrations
-│   └── model/model.go                 # Workspace, Session structs
-├── frontend/
-│   └── src/
-│       ├── App.tsx                    # Auth gate + layout
-│       ├── components/
-│       │   ├── Auth/LoginForm.tsx     # Login / setup form
-│       │   ├── Sidebar/Sidebar.tsx    # Workspace list
-│       │   └── Terminal/
-│       │       ├── TabBar.tsx         # Session tab strip
-│       │       ├── TerminalPanel.tsx  # Tab bar + terminal viewport
-│       │       └── TerminalView.tsx   # xterm.js instance
-│       ├── hooks/useTerminal.ts       # xterm.js + WebSocket lifecycle
-│       ├── stores/appStore.ts         # Zustand state management
-│       ├── api/client.ts              # REST API client
-│       └── lib/theme.ts              # Ghostty-inspired dark theme
-├── Dockerfile
-├── docker-compose.yml
+│   ├── server/                        # HTTP routing, auth middleware
+│   ├── api/                           # REST handlers (workspace, session, auth)
+│   ├── ws/                            # WebSocket upgrade + PTY bridge
+│   ├── tmux/                          # tmux session lifecycle management
+│   ├── store/                         # SQLite persistence + migrations
+│   └── model/                         # Data structs
+├── frontend/src/
+│   ├── components/
+│   │   ├── Auth/LoginForm.tsx         # Login / setup form
+│   │   ├── Sidebar/Sidebar.tsx        # Workspace list + context menu
+│   │   └── Terminal/                  # TabBar, TerminalPanel, TerminalView
+│   ├── hooks/useTerminal.ts           # xterm.js + WebSocket lifecycle
+│   ├── stores/appStore.ts             # Zustand state management
+│   └── lib/theme.ts                   # Ghostty-inspired dark theme
+├── deploy/
+│   ├── install.sh                     # Host install script (build + systemd)
+│   ├── uninstall.sh                   # Clean removal script
+│   └── ghostterm.service              # systemd unit template
+├── Dockerfile                         # Multi-stage build (Ubuntu 24.04 runtime)
+├── docker-compose.yml                 # Docker deployment with persistent volumes
 └── Makefile
 ```
 
@@ -171,12 +189,19 @@ make dev-frontend      # Terminal 2: Vite dev server with proxy
 
 | Decision | Rationale |
 |----------|-----------|
-| **Go stdlib net/http** | ~12 endpoints. Go 1.22+ ServeMux handles method routing natively. No framework needed. |
-| **modernc.org/sqlite** | Pure Go, no CGo. Enables static binary and cross-compilation. |
+| **Go stdlib net/http** | ~12 endpoints. Go 1.22+ ServeMux handles method routing natively. |
+| **modernc.org/sqlite** | Pure Go, no CGo. Static binary, cross-compilation. |
 | **tmux for persistence** | Sessions survive browser close AND server restart. Independent process. |
-| **Binary WebSocket frames** | Zero encoding overhead vs Base64 JSON. Critical for high-throughput terminal output. |
+| **Binary WebSocket frames** | Zero encoding overhead. Critical for high-throughput terminal output. |
 | **Session cookie (not JWT)** | Simpler and revocable for single-user self-hosting. |
-| **Zustand** | Minimal state management. No Redux boilerplate. |
+| **Ubuntu 24.04 (Docker)** | glibc-based for tool compatibility (Node.js, Claude Code, etc.). |
+
+## Security Notes
+
+- Native install exposes the same access level as SSH — use strong passwords
+- Always use HTTPS in production (Cloudflare Tunnel recommended)
+- Restrict port access via firewall or VPN
+- Docker mode provides isolation — host files are not accessible
 
 ## Roadmap
 
@@ -185,7 +210,7 @@ make dev-frontend      # Terminal 2: Vite dev server with proxy
 - [ ] Tab drag-to-reorder
 - [ ] Terminal search
 - [ ] Custom themes
-- [ ] HTTPS/TLS support
+- [ ] HTTPS/TLS built-in support
 
 ## License
 
