@@ -8,13 +8,7 @@ interface TerminalPanelProps {
 }
 
 export function TerminalPanel({ showMenuButton, onMenuClick }: TerminalPanelProps) {
-  const { activeSessionId, sessions } = useAppStore();
-  // Render every session across every workspace and toggle visibility instead
-  // of remounting on workspace switch. Detaching a TerminalView from the DOM
-  // detaches xterm's element/canvas, and the WebGL renderer doesn't recover
-  // its contents on reattach — that's what caused the blank-terminal-until-
-  // refresh bug when switching back to the first workspace.
-  const allSessions = Object.values(sessions).flat();
+  const { activeSessionId } = useAppStore();
 
   return (
     <div style={{
@@ -26,18 +20,10 @@ export function TerminalPanel({ showMenuButton, onMenuClick }: TerminalPanelProp
     }}>
       <TabBar showMenuButton={showMenuButton} onMenuClick={onMenuClick} />
       <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
-        {allSessions.map((sess) => (
-          <div
-            key={sess.id}
-            style={{
-              position: 'absolute',
-              inset: 0,
-              display: sess.id === activeSessionId ? 'block' : 'none',
-            }}
-          >
-            <TerminalView sessionId={sess.id} />
-          </div>
-        ))}
+        {/* Single mount point. Inactive sessions live in the cache with their
+            xterm DOM nodes detached — VS Code's pattern, the only one xterm.js
+            supports for tab-style switching (see xtermjs/xterm.js#3029). */}
+        <TerminalView sessionId={activeSessionId} />
       </div>
     </div>
   );

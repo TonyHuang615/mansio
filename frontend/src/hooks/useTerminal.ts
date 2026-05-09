@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
@@ -17,187 +17,207 @@ interface TerminalInstance {
   terminal: Terminal;
   fitAddon: FitAddon;
   ws: WebSocket | null;
+  webgl: WebglAddon | null;
+  reconnectTimer: number | undefined;
+  listenersBound: boolean;
 }
 
 const instances = new Map<string, TerminalInstance>();
 
-// True when the container has real layout dimensions (i.e. is currently
-// `display: block` and laid out). Calling fit() against a 0x0 container
-// shrinks the PTY to 2x1, corrupts xterm's reflow, and (with WebGL) wipes
-// the framebuffer — that's what made the first workspace go black on return.
-function hasRealSize(el: HTMLElement | null | undefined): boolean {
-  if (!el) return false;
-  return el.offsetWidth > 0 && el.offsetHeight > 0;
+function createInstance(theme: ITheme): TerminalInstance {
+  const terminal = new Terminal({
+    theme,
+    fontFamily: "'JetBrains Mono', 'SF Mono', 'Menlo', 'Noto Sans KR', 'Noto Sans CJK SC', monospace",
+    fontSize: 14,
+    lineHeight: 1.2,
+    cursorBlink: true,
+    cursorStyle: 'block',
+    allowProposedApi: true,
+    scrollback: 10000,
+  });
+  const fitAddon = new FitAddon();
+  terminal.loadAddon(fitAddon);
+  terminal.loadAddon(new WebLinksAddon());
+
+  return {
+    terminal,
+    fitAddon,
+    ws: null,
+    webgl: null,
+    reconnectTimer: undefined,
+    listenersBound: false,
+  };
 }
 
-function fitAndSendResize(inst: TerminalInstance, container: HTMLElement) {
-  if (!hasRealSize(container)) return;
-  inst.fitAddon.fit();
-  const dims = inst.fitAddon.proposeDimensions();
-  if (dims && inst.ws?.readyState === WebSocket.OPEN) {
-    inst.ws.send(JSON.stringify({ type: 'resize', cols: dims.cols, rows: dims.rows }));
+// Per xterm.js WebglAddon README: register onContextLoss to dispose the
+// addon when the browser evicts the WebGL context. xterm falls back to its
+// built-in renderer automatically. Without this, the canvas goes black and
+// stays black for the lifetime of the page.
+function loadWebgl(inst: TerminalInstance): void {
+  if (inst.webgl) return;
+  try {
+    const webgl = new WebglAddon();
+    webgl.onContextLoss(() => {
+      webgl.dispose();
+      inst.webgl = null;
+    });
+    inst.terminal.loadAddon(webgl);
+    inst.webgl = webgl;
+  } catch {
+    console.warn('WebGL addon failed, using fallback renderer');
   }
 }
 
-// Factory exported for testing — returns the ResizeObserver callback so
-// tests can drive it without a real ResizeObserver.
-export function createResizeHandler(
-  inst: TerminalInstance,
-  container: HTMLElement,
-): ResizeObserverCallback {
-  let wasHidden = false;
-  return (entries) => {
-    for (const entry of entries) {
-      const { width, height } = entry.contentRect;
-      if (width <= 0 || height <= 0) {
-        wasHidden = true;
-        continue;
-      }
-      fitAndSendResize(inst, container);
-      if (wasHidden) {
-        wasHidden = false;
-        // WebGL framebuffer can lose its contents while the canvas was 0x0;
-        // force xterm to repaint its current buffer state.
-        inst.terminal.refresh(0, Math.max(0, inst.terminal.rows - 1));
+function configureTextarea(inst: TerminalInstance): void {
+  const ta = (inst.terminal as unknown as { textarea?: HTMLTextAreaElement }).textarea;
+  if (!ta) return;
+  // Stop mobile keyboards from autocapitalize/autocorrect/spellcheck on
+  // terminal input — particularly important for CJK IME mid-composition.
+  ta.setAttribute('autocapitalize', 'off');
+  ta.setAttribute('autocorrect', 'off');
+  ta.setAttribute('autocomplete', 'off');
+  ta.setAttribute('spellcheck', 'false');
+}
+
+// Bind input → WebSocket listeners exactly once per instance. The listener
+// closures read `inst.ws` at call time so they survive reconnects without
+// needing to be re-attached (which would otherwise leak duplicate listeners).
+function bindInputListeners(inst: TerminalInstance): void {
+  if (inst.listenersBound) return;
+  inst.listenersBound = true;
+
+  const send = (data: string | Uint8Array) => {
+    const ws = inst.ws;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    if (typeof data === 'string') {
+      ws.send(new TextEncoder().encode(data));
+    } else {
+      ws.send(data);
+    }
+  };
+
+  inst.terminal.onData((data) => send(data));
+  inst.terminal.attachCustomKeyEventHandler(createShiftEnterHandler((data) => send(data)));
+  inst.terminal.onBinary((data) => {
+    const buf = new Uint8Array(data.length);
+    for (let i = 0; i < data.length; i++) buf[i] = data.charCodeAt(i);
+    send(buf);
+  });
+}
+
+function connectWebSocket(inst: TerminalInstance, sid: string): void {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const ws = new WebSocket(`${protocol}//${window.location.host}/api/v1/ws/terminal/${sid}`);
+  ws.binaryType = 'arraybuffer';
+
+  ws.onopen = () => {
+    inst.fitAddon.fit();
+    const dims = inst.fitAddon.proposeDimensions();
+    if (dims) {
+      ws.send(JSON.stringify({ type: 'resize', cols: dims.cols, rows: dims.rows }));
+    }
+  };
+
+  ws.onmessage = (e) => {
+    if (e.data instanceof ArrayBuffer) {
+      inst.terminal.write(new Uint8Array(e.data));
+    } else {
+      try {
+        const msg = JSON.parse(e.data);
+        if (msg.type === 'attached') {
+          console.log('Terminal attached');
+        }
+      } catch {
+        // ignore non-JSON text frames
       }
     }
   };
+
+  ws.onclose = () => {
+    clearTimeout(inst.reconnectTimer);
+    inst.reconnectTimer = window.setTimeout(() => {
+      if (instances.has(sid)) {
+        connectWebSocket(inst, sid);
+      }
+    }, 2000);
+  };
+
+  inst.ws = ws;
+}
+
+// Detach the cached terminal element for `sessionId` from `container` if it
+// is currently mounted there. The instance itself stays alive in the map;
+// only its DOM presence is removed.
+function detachFromContainer(sessionId: string, container: HTMLElement): void {
+  const inst = instances.get(sessionId);
+  const el = inst?.terminal.element;
+  if (el && el.parentElement === container) {
+    container.removeChild(el);
+  }
 }
 
 export function useTerminal({ sessionId, containerRef, theme }: UseTerminalOptions) {
   const activeTheme = theme ?? darkTerminalTheme;
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimer = useRef<number | undefined>(undefined);
-
-  const connect = useCallback((term: Terminal, sid: string) => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${protocol}//${window.location.host}/api/v1/ws/terminal/${sid}`);
-    ws.binaryType = 'arraybuffer';
-
-    ws.onopen = () => {
-      const inst = instances.get(sid);
-      if (!inst) return;
-      inst.fitAddon.fit();
-      const dims = inst.fitAddon.proposeDimensions();
-      if (dims) {
-        ws.send(JSON.stringify({ type: 'resize', cols: dims.cols, rows: dims.rows }));
-      }
-    };
-
-    ws.onmessage = (e) => {
-      if (e.data instanceof ArrayBuffer) {
-        term.write(new Uint8Array(e.data));
-      } else {
-        try {
-          const msg = JSON.parse(e.data);
-          if (msg.type === 'attached') {
-            console.log('Terminal attached');
-          }
-        } catch {}
-      }
-    };
-
-    ws.onclose = () => {
-      clearTimeout(reconnectTimer.current);
-      reconnectTimer.current = window.setTimeout(() => {
-        if (instances.has(sid)) {
-          connect(term, sid);
-        }
-      }, 2000);
-    };
-
-    wsRef.current = ws;
-    const inst = instances.get(sid);
-    if (inst) inst.ws = ws;
-
-    const sendString = (data: string) => {
-      if (ws.readyState === WebSocket.OPEN) {
-        const encoder = new TextEncoder();
-        ws.send(encoder.encode(data));
-      }
-    };
-
-    term.onData((data) => sendString(data));
-
-    term.attachCustomKeyEventHandler(createShiftEnterHandler(sendString));
-
-    term.onBinary((data) => {
-      if (ws.readyState === WebSocket.OPEN) {
-        const buffer = new Uint8Array(data.length);
-        for (let i = 0; i < data.length; i++) {
-          buffer[i] = data.charCodeAt(i);
-        }
-        ws.send(buffer);
-      }
-    });
-  }, []);
+  const previousSessionIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!sessionId || !containerRef.current) return;
+    const container = containerRef.current;
+    if (!container) return;
+
+    const previousSessionId = previousSessionIdRef.current;
+    if (previousSessionId && previousSessionId !== sessionId) {
+      detachFromContainer(previousSessionId, container);
+    }
+
+    if (!sessionId) {
+      previousSessionIdRef.current = null;
+      return;
+    }
 
     let inst = instances.get(sessionId);
-
     if (!inst) {
-      const terminal = new Terminal({
-        theme: activeTheme,
-        fontFamily: "'JetBrains Mono', 'SF Mono', 'Menlo', 'Noto Sans KR', 'Noto Sans CJK SC', monospace",
-        fontSize: 14,
-        lineHeight: 1.2,
-        cursorBlink: true,
-        cursorStyle: 'block',
-        allowProposedApi: true,
-        scrollback: 10000,
-      });
-
-      const fitAddon = new FitAddon();
-      terminal.loadAddon(fitAddon);
-      terminal.loadAddon(new WebLinksAddon());
-
-      inst = { terminal, fitAddon, ws: null };
+      inst = createInstance(activeTheme);
       instances.set(sessionId, inst);
     }
 
-    const container = containerRef.current;
-    // xterm's open() is not idempotent: re-running it on a new container leaves the
-    // previous element orphaned and the new container blank. After the first open()
-    // we move the existing terminal element across mounts (e.g. workspace switches)
-    // so the cached instance keeps its viewport, scrollback, and event handlers.
     if (inst.terminal.element) {
+      // Re-attach the cached element to the (possibly new) container.
+      // VS Code's pattern: keep one xterm instance per session alive but
+      // move its DOM node in/out as the user switches tabs. Avoids
+      // xterm.js's display:none corruption (xtermjs/xterm.js#494, #3029).
       if (inst.terminal.element.parentElement !== container) {
         container.appendChild(inst.terminal.element);
       }
     } else {
       inst.terminal.open(container);
-      try {
-        inst.terminal.loadAddon(new WebglAddon());
-      } catch {
-        console.warn('WebGL addon failed, using canvas renderer');
-      }
-      // Tame mobile keyboards: stop autocapitalize/autocorrect/spellcheck from
-      // mangling input, especially CJK IME where mid-composition jamo can be
-      // "corrected" before the syllable is committed.
-      const ta = (inst.terminal as unknown as { textarea?: HTMLTextAreaElement }).textarea;
-      if (ta) {
-        ta.setAttribute('autocapitalize', 'off');
-        ta.setAttribute('autocorrect', 'off');
-        ta.setAttribute('autocomplete', 'off');
-        ta.setAttribute('spellcheck', 'false');
-      }
+      loadWebgl(inst);
+      configureTextarea(inst);
+      bindInputListeners(inst);
     }
 
     inst.fitAddon.fit();
 
     if (!inst.ws || inst.ws.readyState === WebSocket.CLOSED) {
-      connect(inst.terminal, sessionId);
+      connectWebSocket(inst, sessionId);
     }
 
-    const resizeObserver = new ResizeObserver(createResizeHandler(inst, container));
+    previousSessionIdRef.current = sessionId;
+
+    const resizeObserver = new ResizeObserver(() => {
+      const i = instances.get(sessionId);
+      if (!i) return;
+      i.fitAddon.fit();
+      const dims = i.fitAddon.proposeDimensions();
+      if (dims && i.ws?.readyState === WebSocket.OPEN) {
+        i.ws.send(JSON.stringify({ type: 'resize', cols: dims.cols, rows: dims.rows }));
+      }
+    });
     resizeObserver.observe(container);
 
     return () => {
       resizeObserver.disconnect();
     };
-  }, [sessionId, containerRef, connect, activeTheme]);
+  }, [sessionId, containerRef, activeTheme]);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -205,21 +225,15 @@ export function useTerminal({ sessionId, containerRef, theme }: UseTerminalOptio
     if (!inst) return;
     inst.terminal.options.theme = activeTheme;
   }, [sessionId, activeTheme]);
-
-  useEffect(() => {
-    return () => {
-      clearTimeout(reconnectTimer.current);
-    };
-  }, []);
 }
 
-export function disposeTerminal(sessionId: string) {
+export function disposeTerminal(sessionId: string): void {
   const inst = instances.get(sessionId);
-  if (inst) {
-    inst.ws?.close();
-    inst.terminal.dispose();
-    instances.delete(sessionId);
-  }
+  if (!inst) return;
+  clearTimeout(inst.reconnectTimer);
+  inst.ws?.close();
+  inst.terminal.dispose();
+  instances.delete(sessionId);
 }
 
 export function pasteToTerminal(sessionId: string, text: string): boolean {

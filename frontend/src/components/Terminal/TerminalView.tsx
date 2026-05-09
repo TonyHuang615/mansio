@@ -5,7 +5,7 @@ import { uploadFile } from '../../api/upload';
 import '@xterm/xterm/css/xterm.css';
 
 interface TerminalViewProps {
-  sessionId: string;
+  sessionId: string | null;
 }
 
 export function TerminalView({ sessionId }: TerminalViewProps) {
@@ -42,6 +42,7 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
       dragDepth.current = 0;
       setIsDragging(false);
 
+      if (!sessionId) return;
       const files = Array.from(e.dataTransfer.files);
       if (files.length === 0) return;
 
