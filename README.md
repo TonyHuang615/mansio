@@ -6,8 +6,10 @@ Web-based multi-terminal server with persistent sessions. Access your machine's 
 
 ## Features
 
-- **Workspaces & Tabs** — Group terminals into workspaces, each holding multiple tabs. Right-click to rename or delete.
+- **Workspaces & Tabs** — Group terminals into workspaces, each holding multiple tabs. Right-click to rename or delete. The sidebar shows each workspace's last-active working directory at a glance.
 - **Persistent Sessions (tmux)** — Close the browser; processes keep running. Reconnect anytime with full scrollback restored. Sessions survive both browser disconnects and server restarts.
+- **Instant Workspace Switching** — Every open terminal stays mounted in the background (VS Code–style detach/attach), so switching workspaces is immediate, scrollback-preserving, and never re-fits a hidden terminal to 0×0.
+- **Mouse Mode** — Scroll, select, and click work natively inside the terminal (tmux mouse mode is enabled by default).
 - **Single Binary** — ~10MB Go binary with the React frontend embedded. Only external dependency is `tmux`.
 - **Light / Dark / System Theme** — Auto-follows OS preference, or pin to light/dark. ANSI palettes are tuned for ≥4.5:1 contrast on either background.
 - **Drag-and-Drop Upload** — Drop files onto the terminal to upload them; the path is pasted at the prompt, ready to use.
