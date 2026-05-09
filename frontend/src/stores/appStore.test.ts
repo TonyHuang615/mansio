@@ -40,6 +40,7 @@ describe('appStore', () => {
       activeSessionId: null,
       activeSessionByWorkspace: {},
       sessionActivity: {},
+      toasts: [],
       initialized: false,
     });
     setVisibility('visible');
@@ -277,6 +278,130 @@ describe('appStore', () => {
       });
       await useAppStore.getState().deleteSession('s-2');
       expect(useAppStore.getState().sessionActivity['s-2']).toBeUndefined();
+    });
+  });
+
+  describe('toasts', () => {
+    function driveBurstAndIdle(sessionId: string, burstMs = 600, idleMs = 2000) {
+      useAppStore.getState().markSessionOutput(sessionId);
+      vi.advanceTimersByTime(burstMs);
+      useAppStore.getState().markSessionOutput(sessionId);
+      vi.advanceTimersByTime(idleMs);
+    }
+
+    it('pushes a toast when a background session goes idle after a burst', () => {
+      const s2 = { ...mockSession, id: 's-2', title: 'Build' };
+      useAppStore.setState({
+        workspaces: [mockWorkspace],
+        sessions: { 'ws-1': [mockSession, s2] },
+        activeWorkspaceId: 'ws-1',
+        activeSessionId: 's-1',
+      });
+      driveBurstAndIdle('s-2');
+      const toasts = useAppStore.getState().toasts;
+      expect(toasts).toHaveLength(1);
+      expect(toasts[0].sessionId).toBe('s-2');
+      expect(toasts[0].workspaceId).toBe('ws-1');
+      expect(toasts[0].sessionTitle).toBe('Build');
+    });
+
+    it('does not push a toast for the active foreground session', () => {
+      useAppStore.setState({
+        workspaces: [mockWorkspace],
+        sessions: { 'ws-1': [mockSession] },
+        activeWorkspaceId: 'ws-1',
+        activeSessionId: 's-1',
+      });
+      driveBurstAndIdle('s-1');
+      expect(useAppStore.getState().toasts).toHaveLength(0);
+    });
+
+    it('coalesces repeat toasts for the same session', () => {
+      const s2 = { ...mockSession, id: 's-2' };
+      useAppStore.setState({
+        workspaces: [mockWorkspace],
+        sessions: { 'ws-1': [mockSession, s2] },
+        activeWorkspaceId: 'ws-1',
+        activeSessionId: 's-1',
+      });
+      driveBurstAndIdle('s-2');
+      // Reset unread so the next idle fire isn't a no-op, simulating that
+      // the user briefly viewed the session and stepped away again.
+      useAppStore.getState().clearSessionUnread('s-2');
+      driveBurstAndIdle('s-2');
+      const toasts = useAppStore.getState().toasts;
+      expect(toasts).toHaveLength(1);
+      expect(toasts[0].sessionId).toBe('s-2');
+    });
+
+    it('setActiveSession dismisses pending toasts for that session', () => {
+      const s2 = { ...mockSession, id: 's-2' };
+      useAppStore.setState({
+        workspaces: [mockWorkspace],
+        sessions: { 'ws-1': [mockSession, s2] },
+        activeWorkspaceId: 'ws-1',
+        activeSessionId: 's-1',
+      });
+      driveBurstAndIdle('s-2');
+      useAppStore.getState().setActiveSession('s-2');
+      expect(useAppStore.getState().toasts).toHaveLength(0);
+    });
+
+    it('dismissToast removes a single toast by id', () => {
+      const s2 = { ...mockSession, id: 's-2' };
+      useAppStore.setState({
+        workspaces: [mockWorkspace],
+        sessions: { 'ws-1': [mockSession, s2] },
+        activeWorkspaceId: 'ws-1',
+        activeSessionId: 's-1',
+      });
+      driveBurstAndIdle('s-2');
+      const toast = useAppStore.getState().toasts[0];
+      useAppStore.getState().dismissToast(toast.id);
+      expect(useAppStore.getState().toasts).toHaveLength(0);
+    });
+
+    it('deleteSession drops toasts for that session', async () => {
+      const s2 = { ...mockSession, id: 's-2' };
+      useAppStore.setState({
+        workspaces: [mockWorkspace],
+        sessions: { 'ws-1': [mockSession, s2] },
+        activeWorkspaceId: 'ws-1',
+        activeSessionId: 's-1',
+        toasts: [
+          { id: 't-1', sessionId: 's-2', workspaceId: 'ws-1', sessionTitle: 'x', createdAt: 1 },
+        ],
+      });
+      await useAppStore.getState().deleteSession('s-2');
+      expect(useAppStore.getState().toasts).toHaveLength(0);
+    });
+  });
+
+  describe('setActiveWorkspace clears unread', () => {
+    it('clears unread and toasts on the workspace’s remembered session', async () => {
+      const ws2 = { ...mockWorkspace, id: 'ws-2', name: 'Other' };
+      const s2 = { ...mockSession, id: 's-2', workspaceId: 'ws-2' };
+      useAppStore.setState({
+        workspaces: [mockWorkspace, ws2],
+        sessions: { 'ws-1': [mockSession], 'ws-2': [s2] },
+        activeWorkspaceId: 'ws-1',
+        activeSessionId: 's-1',
+        activeSessionByWorkspace: { 'ws-1': 's-1', 'ws-2': 's-2' },
+        sessionActivity: {
+          's-2': { unread: true, lastOutputAt: 100, notifiedAt: 100 },
+        },
+        toasts: [
+          { id: 't-1', sessionId: 's-2', workspaceId: 'ws-2', sessionTitle: 'x', createdAt: 100 },
+        ],
+      });
+      await useAppStore.getState().setActiveWorkspace('ws-2');
+      const state = useAppStore.getState();
+      expect(state.activeWorkspaceId).toBe('ws-2');
+      expect(state.activeSessionId).toBe('s-2');
+      expect(sessionUnread(state, 's-2')).toBe(false);
+      expect(state.toasts).toHaveLength(0);
+      // Timestamps preserved — only `unread` flips.
+      expect(state.sessionActivity['s-2'].lastOutputAt).toBe(100);
     });
   });
 });

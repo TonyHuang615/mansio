@@ -3,6 +3,7 @@ import { useAppStore } from './stores/appStore';
 import { Sidebar } from './components/Sidebar/Sidebar';
 import { TerminalPanel } from './components/Terminal/TerminalPanel';
 import { LoginForm } from './components/Auth/LoginForm';
+import { ToastContainer } from './components/Toast/ToastContainer';
 import { useEffectiveTheme } from './hooks/useEffectiveTheme';
 import { useMediaQuery, MOBILE_QUERY } from './hooks/useMediaQuery';
 
@@ -314,6 +315,7 @@ export default function App() {
         />
       </div>
       </div>
+      <ToastContainer />
     </div>
   );
 }

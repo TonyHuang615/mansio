@@ -8,6 +8,16 @@ export interface SessionActivity {
   notifiedAt: number;
 }
 
+export interface Toast {
+  id: string;
+  sessionId: string;
+  workspaceId: string;
+  sessionTitle: string;
+  createdAt: number;
+}
+
+const MAX_TOASTS = 5;
+
 // "Idle-after-busy" heuristic: an output burst marks unread only after
 // IDLE_MS of silence and only if the burst was longer than MIN_BUSY_MS.
 // This filters spinner/cursor noise (which never goes idle and is too
@@ -53,6 +63,7 @@ interface AppState {
   // switching workspaces and to pick which session's CWD the sidebar shows.
   activeSessionByWorkspace: Record<string, string>;
   sessionActivity: Record<string, SessionActivity>;
+  toasts: Toast[];
   initialized: boolean;
 
   init: () => Promise<void>;
@@ -71,6 +82,7 @@ interface AppState {
 
   markSessionOutput: (sessionId: string) => void;
   clearSessionUnread: (sessionId: string) => void;
+  dismissToast: (id: string) => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -80,6 +92,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   activeSessionId: null,
   activeSessionByWorkspace: {},
   sessionActivity: {},
+  toasts: [],
   initialized: false,
 
   init: async () => {
@@ -148,10 +161,15 @@ export const useAppStore = create<AppState>((set, get) => ({
       const nextWid = workspaces.length > 0 ? workspaces[0].id : null;
       const nextActive = nextWid ? activeSessionByWorkspace[nextWid] ?? sessions[nextWid]?.[0]?.id ?? null : null;
       const sessionActivity = { ...s.sessionActivity };
+      const removedIds = new Set<string>();
       for (const sess of removedSessions) {
         delete sessionActivity[sess.id];
         cancelIdleTracking(sess.id);
+        removedIds.add(sess.id);
       }
+      const toasts = s.toasts.some((t) => removedIds.has(t.sessionId))
+        ? s.toasts.filter((t) => !removedIds.has(t.sessionId))
+        : s.toasts;
       return {
         workspaces,
         sessions,
@@ -159,6 +177,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         activeSessionId: nextActive,
         activeSessionByWorkspace,
         sessionActivity,
+        toasts,
       };
     });
   },
@@ -180,6 +199,25 @@ export const useAppStore = create<AppState>((set, get) => ({
       const remembered = s.activeSessionByWorkspace[id];
       const stillExists = remembered && sessions.some((sess) => sess.id === remembered);
       const nextActive = stillExists ? remembered : sessions[0]?.id ?? null;
+      // Switching to a workspace counts as viewing its active session, so
+      // clear that session's unread/toasts and any pending idle timer the
+      // same way setActiveSession does. Without this, a previously-seen
+      // alert resurfaces as soon as the user navigates away and back.
+      let sessionActivity = s.sessionActivity;
+      let toasts = s.toasts;
+      if (nextActive) {
+        cancelIdleTracking(nextActive);
+        const prev = s.sessionActivity[nextActive];
+        if (prev?.unread) {
+          sessionActivity = {
+            ...s.sessionActivity,
+            [nextActive]: { ...prev, unread: false },
+          };
+        }
+        if (toasts.some((t) => t.sessionId === nextActive)) {
+          toasts = toasts.filter((t) => t.sessionId !== nextActive);
+        }
+      }
       return {
         sessions: { ...s.sessions, [id]: sessions },
         activeWorkspaceId: id,
@@ -187,6 +225,8 @@ export const useAppStore = create<AppState>((set, get) => ({
         activeSessionByWorkspace: nextActive
           ? { ...s.activeSessionByWorkspace, [id]: nextActive }
           : s.activeSessionByWorkspace,
+        sessionActivity,
+        toasts,
       };
     });
   },
@@ -240,11 +280,15 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
       const sessionActivity = { ...s.sessionActivity };
       delete sessionActivity[id];
+      const toasts = s.toasts.some((t) => t.sessionId === id)
+        ? s.toasts.filter((t) => t.sessionId !== id)
+        : s.toasts;
       return {
         sessions: { ...s.sessions, [wid]: sessions },
         activeSessionId: nextActive,
         activeSessionByWorkspace,
         sessionActivity,
+        toasts,
       };
     });
   },
@@ -274,12 +318,16 @@ export const useAppStore = create<AppState>((set, get) => ({
         prev && prev.unread
           ? { ...s.sessionActivity, [id]: { ...prev, unread: false } }
           : s.sessionActivity;
+      const toasts = s.toasts.some((t) => t.sessionId === id)
+        ? s.toasts.filter((t) => t.sessionId !== id)
+        : s.toasts;
       return {
         activeSessionId: id,
         activeSessionByWorkspace: wid
           ? { ...s.activeSessionByWorkspace, [wid]: id }
           : s.activeSessionByWorkspace,
         sessionActivity,
+        toasts,
       };
     });
   },
@@ -336,15 +384,45 @@ export const useAppStore = create<AppState>((set, get) => ({
         set((s) => {
           const prev = s.sessionActivity[sessionId];
           if (prev?.unread) return s;
-          return {
-            sessionActivity: {
-              ...s.sessionActivity,
-              [sessionId]: {
-                unread: true,
-                lastOutputAt: t.lastByteAt,
-                notifiedAt: prev?.notifiedAt ?? 0,
-              },
+          const nextActivity = {
+            ...s.sessionActivity,
+            [sessionId]: {
+              unread: true,
+              lastOutputAt: t.lastByteAt,
+              notifiedAt: t.lastByteAt,
             },
+          };
+          // Resolve the session's title and parent workspace for the toast.
+          // The unread flip is independent: if we can't find the session in
+          // the loaded session lists (e.g. data hasn't synced yet) we still
+          // light the badge — we just skip the toast for this fire.
+          let sessionTitle = '';
+          let workspaceId = '';
+          for (const [wid, list] of Object.entries(s.sessions)) {
+            const found = list.find((sess) => sess.id === sessionId);
+            if (found) {
+              sessionTitle = found.title;
+              workspaceId = wid;
+              break;
+            }
+          }
+          if (!workspaceId) {
+            return { sessionActivity: nextActivity };
+          }
+          const toast: Toast = {
+            id: `${sessionId}-${t.lastByteAt}`,
+            sessionId,
+            workspaceId,
+            sessionTitle,
+            createdAt: t.lastByteAt,
+          };
+          // Coalesce: replace any existing toast for the same session, then
+          // cap the visible stack so a long absence doesn't pile up dozens.
+          const filtered = s.toasts.filter((x) => x.sessionId !== sessionId);
+          const toasts = [...filtered, toast].slice(-MAX_TOASTS);
+          return {
+            sessionActivity: nextActivity,
+            toasts,
           };
         });
       }, IDLE_MS)
@@ -355,13 +433,22 @@ export const useAppStore = create<AppState>((set, get) => ({
     cancelIdleTracking(sessionId);
     set((s) => {
       const prev = s.sessionActivity[sessionId];
-      if (!prev || !prev.unread) return s;
+      const hasToast = s.toasts.some((t) => t.sessionId === sessionId);
+      if ((!prev || !prev.unread) && !hasToast) return s;
       return {
-        sessionActivity: {
-          ...s.sessionActivity,
-          [sessionId]: { ...prev, unread: false },
-        },
+        sessionActivity:
+          prev && prev.unread
+            ? { ...s.sessionActivity, [sessionId]: { ...prev, unread: false } }
+            : s.sessionActivity,
+        toasts: hasToast ? s.toasts.filter((t) => t.sessionId !== sessionId) : s.toasts,
       };
+    });
+  },
+
+  dismissToast: (id: string) => {
+    set((s) => {
+      if (!s.toasts.some((t) => t.id === id)) return s;
+      return { toasts: s.toasts.filter((t) => t.id !== id) };
     });
   },
 }));
