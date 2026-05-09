@@ -92,6 +92,10 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
         width: '100%',
         height: '100%',
         backgroundColor: ui.terminalBg,
+        // Tiny breathing room on mobile — phone screens render the first
+        // column flush against the bezel without it.
+        paddingLeft: isMobile ? 6 : 0,
+        boxSizing: 'border-box',
       }}
     >
       <div

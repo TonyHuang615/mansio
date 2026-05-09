@@ -117,36 +117,57 @@ export function MobileInputBar({ sessionId }: MobileInputBarProps) {
           padding: '0 8px 8px',
         }}
       >
-        <textarea
-          ref={taRef}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={onKeyDown}
-          rows={1}
-          placeholder="Type and press Send (Shift+Enter for newline)"
-          autoCapitalize="off"
-          autoCorrect="off"
-          autoComplete="off"
-          spellCheck={false}
-          enterKeyHint="send"
+        {/*
+          iOS Safari zooms the page when a focused input's computed font-size
+          is below ~16px. Bumping to 16px alone wasn't always enough on real
+          devices, so we use a 20px font and visually scale the textarea down
+          inside a wrapper that owns the layout box (border, padding, flex).
+          The textarea reads as 20px to iOS (no zoom), but renders at 14px.
+        */}
+        <div
           style={{
             flex: 1,
             minWidth: 0,
-            maxHeight: 120,
-            resize: 'none',
-            padding: '8px 10px',
+            height: 40,
+            position: 'relative',
+            overflow: 'hidden',
             backgroundColor: ui.appBg,
             border: `1px solid ${ui.sidebarBorder}`,
             borderRadius: 6,
-            color: ui.textPrimary,
-            fontFamily: "'JetBrains Mono', monospace",
-            // iOS Safari auto-zooms focused inputs whose computed font-size is
-            // < 16px. Keep this at 16+ to suppress the zoom-on-focus behavior.
-            fontSize: 16,
-            lineHeight: 1.4,
-            outline: 'none',
           }}
-        />
+        >
+          <textarea
+            ref={taRef}
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onKeyDown={onKeyDown}
+            rows={1}
+            placeholder="Type and press Send (Shift+Enter for newline)"
+            autoCapitalize="off"
+            autoCorrect="off"
+            autoComplete="off"
+            spellCheck={false}
+            enterKeyHint="send"
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              width: '142.857%', // 1 / 0.7
+              height: '142.857%',
+              transform: 'scale(0.7)',
+              transformOrigin: 'top left',
+              padding: '11px 14px', // visual ~8px / 10px once scaled
+              backgroundColor: 'transparent',
+              border: 'none',
+              color: ui.textPrimary,
+              fontFamily: "'JetBrains Mono', monospace",
+              fontSize: 20,
+              lineHeight: 1.4,
+              outline: 'none',
+              resize: 'none',
+            }}
+          />
+        </div>
         <button
           type="button"
           onClick={handleSend}
