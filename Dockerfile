@@ -25,7 +25,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get install -y nodejs \
     && apt-get clean && rm -rf /var/lib/apt/lists/* \
     && useradd -m -s /bin/bash ghostterm \
-    && echo "ghostterm ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
+    && echo "ghostterm ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers \
+    && touch /home/ghostterm/.zshrc && chown ghostterm:ghostterm /home/ghostterm/.zshrc
 
 WORKDIR /home/ghostterm
 COPY --from=go-builder /ghostterm /usr/local/bin/ghostterm
