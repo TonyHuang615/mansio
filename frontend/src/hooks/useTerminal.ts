@@ -116,9 +116,16 @@ export function useTerminal({ sessionId, containerRef, theme }: UseTerminalOptio
     }
 
     const container = containerRef.current;
-    if (container.children.length === 0) {
+    // xterm's open() is not idempotent: re-running it on a new container leaves the
+    // previous element orphaned and the new container blank. After the first open()
+    // we move the existing terminal element across mounts (e.g. workspace switches)
+    // so the cached instance keeps its viewport, scrollback, and event handlers.
+    if (inst.terminal.element) {
+      if (inst.terminal.element.parentElement !== container) {
+        container.appendChild(inst.terminal.element);
+      }
+    } else {
       inst.terminal.open(container);
-
       try {
         inst.terminal.loadAddon(new WebglAddon());
       } catch {
