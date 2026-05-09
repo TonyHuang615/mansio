@@ -1,6 +1,6 @@
 package store
 
-import "github.com/younkyumjin/ghostterm/internal/model"
+import "github.com/younkyumjin/lociterm/internal/model"
 
 type Store interface {
 	// Workspaces

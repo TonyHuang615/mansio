@@ -31,7 +31,7 @@
 
 ## 인프라 & 배포
 
-- [ ] Docker Compose에 환경변수로 초기 비밀번호 설정 (`GHOSTTERM_PASSWORD`)
+- [ ] Docker Compose에 환경변수로 초기 비밀번호 설정 (`LOCITERM_PASSWORD`)
 - [ ] ARM64 + AMD64 멀티 아키텍처 Docker 이미지
 - [ ] CI/CD 파이프라인 (GitHub Actions: 테스트 → 빌드 → Docker push)
 - [ ] Helm chart (Kubernetes 배포)
@@ -41,7 +41,7 @@
 
 - [ ] WebSocket 백프레셔: 대량 출력 시 프레임 드롭 방지
 - [ ] xterm.js 인스턴스 풀 LRU 관리 (20개 초과 시 가장 오래된 탭 dispose)
-- [ ] 서버 시작 시 orphan tmux 세션 정리 (DB에 없는 `gt_*` 세션 감지)
+- [ ] 서버 시작 시 orphan tmux 세션 정리 (DB에 없는 `lt_*` 세션 감지)
 - [ ] 헬스체크 엔드포인트 개선 (tmux 서버 상태, DB 연결 상태 포함)
 - [ ] 연결 끊김 시 UI 표시 (reconnecting 스피너)
 - [ ] Go 테스트: tmux 매니저 통합 테스트

@@ -1,6 +1,6 @@
-ghostterm
+lociterm
 data/
-cmd/ghostterm/frontend/
+cmd/lociterm/frontend/
 frontend/node_modules/
 frontend/dist/
 .git

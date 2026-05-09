@@ -1,4 +1,4 @@
-module github.com/younkyumjin/ghostterm
+module github.com/younkyumjin/lociterm
 
 go 1.26.3
 

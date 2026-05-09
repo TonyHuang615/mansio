@@ -12,8 +12,8 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-COPY --from=frontend-builder /app/frontend/dist ./cmd/ghostterm/frontend/dist
-RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /ghostterm ./cmd/ghostterm
+COPY --from=frontend-builder /app/frontend/dist ./cmd/lociterm/frontend/dist
+RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /lociterm ./cmd/lociterm
 
 # Stage 3: Runtime (Ubuntu + dev tools)
 FROM ubuntu:24.04
@@ -27,19 +27,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean && rm -rf /var/lib/apt/lists/* \
     && sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen \
     && locale-gen \
-    && useradd -m -s /bin/bash ghostterm \
-    && echo "ghostterm ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers \
-    && touch /home/ghostterm/.zshrc && chown ghostterm:ghostterm /home/ghostterm/.zshrc
+    && useradd -m -s /bin/bash lociterm \
+    && echo "lociterm ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers \
+    && touch /home/lociterm/.zshrc && chown lociterm:lociterm /home/lociterm/.zshrc
 
 ENV LANG=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
 ENV LANGUAGE=en_US:en
 
-WORKDIR /home/ghostterm
-COPY --from=go-builder /ghostterm /usr/local/bin/ghostterm
-RUN mkdir -p /data && chown ghostterm:ghostterm /data
-USER ghostterm
+WORKDIR /home/lociterm
+COPY --from=go-builder /lociterm /usr/local/bin/lociterm
+RUN mkdir -p /data && chown lociterm:lociterm /data
+USER lociterm
 EXPOSE 8080
 VOLUME ["/data"]
-ENTRYPOINT ["ghostterm"]
+ENTRYPOINT ["lociterm"]
 CMD ["--port", "8080", "--data-dir", "/data"]

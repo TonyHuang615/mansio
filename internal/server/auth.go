@@ -56,7 +56,7 @@ func (a *authManager) deleteSession(token string) {
 
 func (a *authManager) setSessionCookie(w http.ResponseWriter, token string) {
 	http.SetCookie(w, &http.Cookie{
-		Name:     "ghostterm_session",
+		Name:     "lociterm_session",
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
@@ -67,7 +67,7 @@ func (a *authManager) setSessionCookie(w http.ResponseWriter, token string) {
 
 func (a *authManager) clearSessionCookie(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
-		Name:     "ghostterm_session",
+		Name:     "lociterm_session",
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
@@ -76,7 +76,7 @@ func (a *authManager) clearSessionCookie(w http.ResponseWriter) {
 }
 
 func (a *authManager) getTokenFromRequest(r *http.Request) string {
-	cookie, err := r.Cookie("ghostterm_session")
+	cookie, err := r.Cookie("lociterm_session")
 	if err != nil {
 		return ""
 	}

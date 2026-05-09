@@ -31,9 +31,9 @@ sudo bash deploy/install.sh
 
 ```bash
 # 管理
-systemctl status ghostterm@$(whoami)
-systemctl restart ghostterm@$(whoami)
-journalctl -u ghostterm@$(whoami) -f
+systemctl status lociterm@$(whoami)
+systemctl restart lociterm@$(whoami)
+journalctl -u lociterm@$(whoami) -f
 
 # 自定义端口
 sudo bash deploy/install.sh --port 3000
@@ -56,7 +56,7 @@ docker compose up -d --build
 ```
 
 **容器重启后保留的内容：**
-- `/home/ghostterm` — 已安装的工具、项目文件、Shell 配置（Docker 卷）
+- `/home/lociterm` — 已安装的工具、项目文件、Shell 配置（Docker 卷）
 - `/data` — 工作区/会话元数据（Docker 卷）
 
 **不保留的内容：**
@@ -99,13 +99,13 @@ docker compose up -d --build
 ### tmux 持久化原理
 
 ```
-1. 创建标签页  → tmux new-session -d -s gt_{id} -c $HOME
-2. 浏览器连接  → creack/pty 启动 "tmux attach -t gt_{id}"
+1. 创建标签页  → tmux new-session -d -s lt_{id} -c $HOME
+2. 浏览器连接  → creack/pty 启动 "tmux attach -t lt_{id}"
                 PTY fd 桥接到 WebSocket（二进制帧）
 3. 浏览器关闭  → PTY（attach 进程）终止
                 tmux 会话在后台继续运行
 4. 重新连接    → 新的 "tmux attach" → 滚动历史 + 进程恢复
-5. 删除标签页  → tmux kill-session -t gt_{id}
+5. 删除标签页  → tmux kill-session -t lt_{id}
 ```
 
 tmux 服务器独立于 Go 进程运行。即使 Go 服务器崩溃或重启，tmux 会话也不会丢失（仅限主机原生安装 — Docker 容器重启时 tmux 会话会丢失）。
@@ -148,7 +148,7 @@ GET    /api/v1/ws/terminal/:sessionId     # WebSocket 终端
 
 ```
 loci-terminal/
-├── cmd/ghostterm/main.go              # 入口点、embed.FS、优雅关闭
+├── cmd/lociterm/main.go              # 入口点、embed.FS、优雅关闭
 ├── internal/
 │   ├── server/                        # HTTP 路由、认证中间件
 │   ├── api/                           # REST 处理器（workspace, session, auth）
@@ -167,7 +167,7 @@ loci-terminal/
 ├── deploy/
 │   ├── install.sh                     # 主机安装脚本（构建 + systemd）
 │   ├── uninstall.sh                   # 清洁卸载脚本
-│   └── ghostterm.service              # systemd 单元模板
+│   └── lociterm.service              # systemd 单元模板
 ├── Dockerfile                         # 多阶段构建（Ubuntu 24.04 运行时）
 ├── docker-compose.yml                 # Docker 部署（含持久卷）
 └── Makefile

@@ -31,9 +31,9 @@ The install script builds from source, installs the binary, and sets up a system
 
 ```bash
 # Management
-systemctl status ghostterm@$(whoami)
-systemctl restart ghostterm@$(whoami)
-journalctl -u ghostterm@$(whoami) -f
+systemctl status lociterm@$(whoami)
+systemctl restart lociterm@$(whoami)
+journalctl -u lociterm@$(whoami) -f
 
 # Custom port
 sudo bash deploy/install.sh --port 3000
@@ -56,7 +56,7 @@ docker compose up -d --build
 ```
 
 **What persists across container restarts:**
-- `/home/ghostterm` — installed tools, project files, shell configs (Docker volume)
+- `/home/lociterm` — installed tools, project files, shell configs (Docker volume)
 - `/data` — workspace/session metadata (Docker volume)
 
 **What does NOT persist:**
@@ -99,13 +99,13 @@ Browser                            Go Server (single binary)
 ### How tmux Persistence Works
 
 ```
-1. Tab created    → tmux new-session -d -s gt_{id} -c $HOME
-2. Browser opens  → creack/pty spawns "tmux attach -t gt_{id}"
+1. Tab created    → tmux new-session -d -s lt_{id} -c $HOME
+2. Browser opens  → creack/pty spawns "tmux attach -t lt_{id}"
                     PTY fd is bridged to WebSocket (binary frames)
 3. Browser closes → PTY (attach process) terminates
                     tmux session keeps running in background
 4. Reconnect      → new "tmux attach" → scrollback + processes restored
-5. Tab deleted    → tmux kill-session -t gt_{id}
+5. Tab deleted    → tmux kill-session -t lt_{id}
 ```
 
 The tmux server runs independently from the Go process. Even if the Go server crashes or restarts, tmux sessions survive (native install only — Docker containers lose tmux sessions on restart).
@@ -148,7 +148,7 @@ GET    /api/v1/ws/terminal/:sessionId     # WebSocket terminal
 
 ```
 loci-terminal/
-├── cmd/ghostterm/main.go              # Entrypoint, embed.FS, graceful shutdown
+├── cmd/lociterm/main.go              # Entrypoint, embed.FS, graceful shutdown
 ├── internal/
 │   ├── server/                        # HTTP routing, auth middleware
 │   ├── api/                           # REST handlers (workspace, session, auth)
@@ -167,7 +167,7 @@ loci-terminal/
 ├── deploy/
 │   ├── install.sh                     # Host install script (build + systemd)
 │   ├── uninstall.sh                   # Clean removal script
-│   └── ghostterm.service              # systemd unit template
+│   └── lociterm.service              # systemd unit template
 ├── Dockerfile                         # Multi-stage build (Ubuntu 24.04 runtime)
 ├── docker-compose.yml                 # Docker deployment with persistent volumes
 └── Makefile

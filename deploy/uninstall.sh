@@ -24,33 +24,33 @@ case "$OS" in
 
         USER="${SUDO_USER:-$(whoami)}"
 
-        if systemctl is-active --quiet "ghostterm@${USER}" 2>/dev/null; then
+        if systemctl is-active --quiet "lociterm@${USER}" 2>/dev/null; then
             info "Stopping service..."
-            systemctl stop "ghostterm@${USER}"
+            systemctl stop "lociterm@${USER}"
         fi
 
-        if systemctl is-enabled --quiet "ghostterm@${USER}" 2>/dev/null; then
+        if systemctl is-enabled --quiet "lociterm@${USER}" 2>/dev/null; then
             info "Disabling service..."
-            systemctl disable "ghostterm@${USER}"
+            systemctl disable "lociterm@${USER}"
         fi
 
-        if [[ -f /etc/systemd/system/ghostterm@.service ]]; then
+        if [[ -f /etc/systemd/system/lociterm@.service ]]; then
             info "Removing systemd unit..."
-            rm -f /etc/systemd/system/ghostterm@.service
+            rm -f /etc/systemd/system/lociterm@.service
             systemctl daemon-reload
         fi
 
-        if [[ -f /usr/local/bin/ghostterm ]]; then
+        if [[ -f /usr/local/bin/lociterm ]]; then
             info "Removing binary..."
-            rm -f /usr/local/bin/ghostterm
+            rm -f /usr/local/bin/lociterm
         fi
 
-        warn "Data directory /var/lib/ghostterm was NOT removed."
-        warn "To delete all data: sudo rm -rf /var/lib/ghostterm"
+        warn "Data directory /var/lib/lociterm was NOT removed."
+        warn "To delete all data: sudo rm -rf /var/lib/lociterm"
         ;;
 
     Darwin)
-        PLIST="${HOME}/Library/LaunchAgents/com.loci-terminal.ghostterm.plist"
+        PLIST="${HOME}/Library/LaunchAgents/com.loci-terminal.lociterm.plist"
 
         if [[ -f "$PLIST" ]]; then
             info "Unloading launchd service..."
@@ -59,19 +59,19 @@ case "$OS" in
             info "Removed launchd plist"
         fi
 
-        if [[ -f /usr/local/bin/ghostterm ]]; then
+        if [[ -f /usr/local/bin/lociterm ]]; then
             info "Removing binary (requires sudo)..."
-            sudo rm -f /usr/local/bin/ghostterm
+            sudo rm -f /usr/local/bin/lociterm
         fi
 
-        warn "Data directory ~/.local/share/ghostterm was NOT removed."
-        warn "To delete all data: rm -rf ~/.local/share/ghostterm"
-        warn "To delete logs: rm -rf ~/Library/Logs/ghostterm"
+        warn "Data directory ~/.local/share/lociterm was NOT removed."
+        warn "To delete all data: rm -rf ~/.local/share/lociterm"
+        warn "To delete logs: rm -rf ~/Library/Logs/lociterm"
         ;;
 
     *)
         warn "Unknown OS: ${OS}"
-        warn "Manually remove /usr/local/bin/ghostterm"
+        warn "Manually remove /usr/local/bin/lociterm"
         ;;
 esac
 

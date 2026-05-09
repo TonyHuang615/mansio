@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	"github.com/gorilla/websocket"
-	"github.com/younkyumjin/ghostterm/internal/tmux"
+	"github.com/younkyumjin/lociterm/internal/tmux"
 )
 
 var upgrader = websocket.Upgrader{

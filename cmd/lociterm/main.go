@@ -13,7 +13,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/younkyumjin/ghostterm/internal/server"
+	"github.com/younkyumjin/lociterm/internal/server"
 )
 
 //go:embed all:frontend/dist
@@ -41,7 +41,7 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("GhostTerm listening on http://localhost:%d", *port)
+		log.Printf("LociTerm listening on http://localhost:%d", *port)
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("server error: %v", err)
 		}

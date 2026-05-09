@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/younkyumjin/ghostterm/internal/store"
+	"github.com/younkyumjin/lociterm/internal/store"
 )
 
 func setupTestAPI(t *testing.T) (store.Store, *http.ServeMux) {

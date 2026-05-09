@@ -10,10 +10,10 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/younkyumjin/ghostterm/internal/api"
-	"github.com/younkyumjin/ghostterm/internal/store"
-	"github.com/younkyumjin/ghostterm/internal/tmux"
-	"github.com/younkyumjin/ghostterm/internal/ws"
+	"github.com/younkyumjin/lociterm/internal/api"
+	"github.com/younkyumjin/lociterm/internal/store"
+	"github.com/younkyumjin/lociterm/internal/tmux"
+	"github.com/younkyumjin/lociterm/internal/ws"
 )
 
 type Server struct {
@@ -71,6 +71,9 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("PATCH /api/v1/sessions/{id}", s.requireAuth(sh.Update))
 	mux.HandleFunc("DELETE /api/v1/sessions/{id}", s.requireAuth(sh.Delete))
 
+	uh := api.NewUploadHandler(s.store, "", 0)
+	mux.HandleFunc("POST /api/v1/sessions/{id}/upload", s.requireAuth(uh.Upload))
+
 	wsh := ws.NewHandler(s.tmuxMgr)
 	mux.HandleFunc("/api/v1/ws/terminal/{sessionId}", s.requireAuth(wsh.HandleTerminal))
 
@@ -113,7 +116,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 		for _, dir := range testDirs {
 			if _, err := os.ReadDir(dir); err != nil {
 				permOk = false
-				permMsg = "Full Disk Access required. Go to System Settings > Privacy & Security > Full Disk Access and add ghostterm (/usr/local/bin/ghostterm)."
+				permMsg = "Full Disk Access required. Go to System Settings > Privacy & Security > Full Disk Access and add lociterm (/usr/local/bin/lociterm)."
 				break
 			}
 		}

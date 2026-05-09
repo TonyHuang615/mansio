@@ -1,7 +1,7 @@
-/ghostterm
+/lociterm
 data/
 .omc/
-cmd/ghostterm/frontend/
+cmd/lociterm/frontend/
 frontend/dist/
 frontend/node_modules/
 *.db

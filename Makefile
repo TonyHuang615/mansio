@@ -2,7 +2,7 @@
 
 FRONTEND_DIR = frontend
 GO_BIN = /opt/homebrew/bin/go
-BUILD_DIR = cmd/ghostterm
+BUILD_DIR = cmd/lociterm
 
 dev-frontend:
 	cd $(FRONTEND_DIR) && npm run dev
@@ -18,7 +18,7 @@ build-frontend:
 build-backend: build-frontend
 	mkdir -p $(BUILD_DIR)/frontend
 	cp -r $(FRONTEND_DIR)/dist $(BUILD_DIR)/frontend/dist
-	$(GO_BIN) build -ldflags="-s -w" -o ghostterm ./$(BUILD_DIR)
+	$(GO_BIN) build -ldflags="-s -w" -o lociterm ./$(BUILD_DIR)
 
 test: test-go test-frontend
 
@@ -29,6 +29,6 @@ test-frontend:
 	cd $(FRONTEND_DIR) && npm test
 
 clean:
-	rm -f ghostterm
+	rm -f lociterm
 	rm -rf $(BUILD_DIR)/frontend
 	rm -rf $(FRONTEND_DIR)/dist

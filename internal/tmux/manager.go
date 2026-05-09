@@ -8,7 +8,7 @@ import (
 	"sync"
 )
 
-const sessionPrefix = "gt_"
+const sessionPrefix = "lt_"
 
 type Manager struct {
 	mu       sync.RWMutex

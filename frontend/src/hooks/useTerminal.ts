@@ -3,11 +3,14 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
 import { WebLinksAddon } from '@xterm/addon-web-links';
-import { terminalTheme } from '../lib/theme';
+import type { ITheme } from '@xterm/xterm';
+import { darkTerminalTheme } from '../lib/theme';
+import { createShiftEnterHandler } from './shiftEnter';
 
 interface UseTerminalOptions {
   sessionId: string | null;
   containerRef: React.RefObject<HTMLDivElement | null>;
+  theme?: ITheme;
 }
 
 interface TerminalInstance {
@@ -18,7 +21,8 @@ interface TerminalInstance {
 
 const instances = new Map<string, TerminalInstance>();
 
-export function useTerminal({ sessionId, containerRef }: UseTerminalOptions) {
+export function useTerminal({ sessionId, containerRef, theme }: UseTerminalOptions) {
+  const activeTheme = theme ?? darkTerminalTheme;
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<number | undefined>(undefined);
 
@@ -64,12 +68,16 @@ export function useTerminal({ sessionId, containerRef }: UseTerminalOptions) {
     const inst = instances.get(sid);
     if (inst) inst.ws = ws;
 
-    term.onData((data) => {
+    const sendString = (data: string) => {
       if (ws.readyState === WebSocket.OPEN) {
         const encoder = new TextEncoder();
         ws.send(encoder.encode(data));
       }
-    });
+    };
+
+    term.onData((data) => sendString(data));
+
+    term.attachCustomKeyEventHandler(createShiftEnterHandler(sendString));
 
     term.onBinary((data) => {
       if (ws.readyState === WebSocket.OPEN) {
@@ -89,7 +97,7 @@ export function useTerminal({ sessionId, containerRef }: UseTerminalOptions) {
 
     if (!inst) {
       const terminal = new Terminal({
-        theme: terminalTheme,
+        theme: activeTheme,
         fontFamily: "'JetBrains Mono', 'SF Mono', 'Menlo', 'Noto Sans KR', 'Noto Sans CJK SC', monospace",
         fontSize: 14,
         lineHeight: 1.2,
@@ -136,7 +144,14 @@ export function useTerminal({ sessionId, containerRef }: UseTerminalOptions) {
     return () => {
       resizeObserver.disconnect();
     };
-  }, [sessionId, containerRef, connect]);
+  }, [sessionId, containerRef, connect, activeTheme]);
+
+  useEffect(() => {
+    if (!sessionId) return;
+    const inst = instances.get(sessionId);
+    if (!inst) return;
+    inst.terminal.options.theme = activeTheme;
+  }, [sessionId, activeTheme]);
 
   useEffect(() => {
     return () => {
@@ -152,4 +167,11 @@ export function disposeTerminal(sessionId: string) {
     inst.terminal.dispose();
     instances.delete(sessionId);
   }
+}
+
+export function pasteToTerminal(sessionId: string, text: string): boolean {
+  const inst = instances.get(sessionId);
+  if (!inst) return false;
+  inst.terminal.paste(text);
+  return true;
 }

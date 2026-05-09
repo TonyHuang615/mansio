@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useAppStore } from '../../stores/appStore';
-import { ui } from '../../lib/theme';
+import { useEffectiveTheme } from '../../hooks/useEffectiveTheme';
+import type { ThemeMode } from '../../lib/theme';
 
 interface ContextMenu {
   workspaceId: string;
@@ -8,7 +9,23 @@ interface ContextMenu {
   y: number;
 }
 
-export function Sidebar() {
+interface SidebarProps {
+  onCloseMobile?: () => void;
+}
+
+const themeIcon: Record<ThemeMode, string> = {
+  system: '🖥',
+  light: '☀',
+  dark: '☾',
+};
+
+const themeLabel: Record<ThemeMode, string> = {
+  system: 'System',
+  light: 'Light',
+  dark: 'Dark',
+};
+
+export function Sidebar({ onCloseMobile }: SidebarProps) {
   const {
     workspaces,
     activeWorkspaceId,
@@ -17,6 +34,7 @@ export function Sidebar() {
     deleteWorkspace,
     renameWorkspace,
   } = useAppStore();
+  const { ui, mode, cycleMode } = useEffectiveTheme();
 
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
@@ -83,21 +101,45 @@ export function Sidebar() {
         display: 'flex',
         justifyContent: 'space-between',
         alignItems: 'center',
+        gap: 8,
       }}>
         <span>Workspaces</span>
-        <button
-          onClick={() => setCreating(true)}
-          style={{
-            background: 'none',
-            border: 'none',
-            color: ui.textSecondary,
-            cursor: 'pointer',
-            fontSize: '16px',
-            padding: '0 4px',
-            lineHeight: 1,
-          }}
-          title="New Workspace"
-        >+</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <button
+            onClick={() => setCreating(true)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: ui.textSecondary,
+              cursor: 'pointer',
+              fontSize: '18px',
+              padding: '4px 6px',
+              lineHeight: 1,
+              minHeight: 28,
+              minWidth: 28,
+            }}
+            title="New Workspace"
+            aria-label="New Workspace"
+          >+</button>
+          {onCloseMobile && (
+            <button
+              onClick={onCloseMobile}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: ui.textSecondary,
+                cursor: 'pointer',
+                fontSize: '18px',
+                padding: '4px 8px',
+                lineHeight: 1,
+                minHeight: 28,
+                minWidth: 28,
+              }}
+              title="Close"
+              aria-label="Close sidebar"
+            >×</button>
+          )}
+        </div>
       </div>
 
       <div style={{ flex: 1, overflow: 'auto', padding: '4px 0' }}>
@@ -107,7 +149,7 @@ export function Sidebar() {
             onClick={() => setActiveWorkspace(ws.id)}
             onContextMenu={(e) => handleContextMenu(e, ws.id)}
             style={{
-              padding: '8px 16px',
+              padding: '10px 16px',
               cursor: 'pointer',
               backgroundColor: ws.id === activeWorkspaceId ? ui.tabActiveBg : 'transparent',
               color: ws.id === activeWorkspaceId ? ui.textPrimary : ui.textSecondary,
@@ -115,6 +157,7 @@ export function Sidebar() {
               display: 'flex',
               justifyContent: 'space-between',
               alignItems: 'center',
+              minHeight: 40,
             }}
           >
             {editingId === ws.id ? (
@@ -134,7 +177,7 @@ export function Sidebar() {
                   color: ui.textPrimary,
                   fontSize: '13px',
                   fontFamily: 'inherit',
-                  padding: '2px 4px',
+                  padding: '4px 6px',
                   width: '100%',
                   outline: 'none',
                 }}
@@ -178,7 +221,7 @@ export function Sidebar() {
                 color: ui.textPrimary,
                 fontSize: '13px',
                 fontFamily: 'inherit',
-                padding: '6px 8px',
+                padding: '8px 10px',
                 outline: 'none',
                 boxSizing: 'border-box',
               }}
@@ -188,12 +231,40 @@ export function Sidebar() {
       </div>
 
       <div style={{
-        padding: '12px 16px',
+        padding: '10px 12px',
         borderTop: `1px solid ${ui.sidebarBorder}`,
         fontSize: '11px',
         color: ui.textMuted,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 8,
       }}>
-        Loci Terminal
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          LociTerm
+        </span>
+        <button
+          onClick={cycleMode}
+          style={{
+            background: 'transparent',
+            border: `1px solid ${ui.sidebarBorder}`,
+            borderRadius: 4,
+            color: ui.textSecondary,
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+            fontSize: 11,
+            padding: '4px 8px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 6,
+            minHeight: 28,
+          }}
+          title={`Theme: ${themeLabel[mode]} (click to change)`}
+          aria-label={`Theme: ${themeLabel[mode]}, click to change`}
+        >
+          <span aria-hidden>{themeIcon[mode]}</span>
+          <span>{themeLabel[mode]}</span>
+        </button>
       </div>
 
       {contextMenu && (
@@ -228,7 +299,7 @@ export function Sidebar() {
               fontFamily: 'inherit',
               fontSize: 'inherit',
             }}
-            onMouseEnter={(e) => { (e.target as HTMLElement).style.backgroundColor = ui.sidebarBorder; }}
+            onMouseEnter={(e) => { (e.target as HTMLElement).style.backgroundColor = ui.hoverBg; }}
             onMouseLeave={(e) => { (e.target as HTMLElement).style.backgroundColor = 'transparent'; }}
           >
             Rename
@@ -251,7 +322,7 @@ export function Sidebar() {
                 fontFamily: 'inherit',
                 fontSize: 'inherit',
               }}
-              onMouseEnter={(e) => { (e.target as HTMLElement).style.backgroundColor = ui.sidebarBorder; }}
+              onMouseEnter={(e) => { (e.target as HTMLElement).style.backgroundColor = ui.hoverBg; }}
               onMouseLeave={(e) => { (e.target as HTMLElement).style.backgroundColor = 'transparent'; }}
             >
               Delete

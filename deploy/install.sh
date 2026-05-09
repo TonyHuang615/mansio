@@ -3,7 +3,7 @@ set -euo pipefail
 
 REPO="Younkyum/Loci-Terminal"
 INSTALL_DIR="/usr/local/bin"
-PORT="${GHOSTTERM_PORT:-8080}"
+PORT="${LOCITERM_PORT:-8080}"
 OS="$(uname -s)"
 
 RED='\033[0;31m'
@@ -45,15 +45,15 @@ build_from_source() {
     cd frontend && npm ci && npm run build && cd ..
 
     info "Building Go binary..."
-    mkdir -p cmd/ghostterm/frontend
-    cp -r frontend/dist cmd/ghostterm/frontend/dist
-    CGO_ENABLED=0 go build -ldflags="-s -w" -o ghostterm ./cmd/ghostterm
+    mkdir -p cmd/lociterm/frontend
+    cp -r frontend/dist cmd/lociterm/frontend/dist
+    CGO_ENABLED=0 go build -ldflags="-s -w" -o lociterm ./cmd/lociterm
 
     info "Installing binary to ${INSTALL_DIR}..."
     if [[ "$OS" == "Darwin" ]]; then
-        sudo install -m 755 ghostterm "${INSTALL_DIR}/ghostterm"
+        sudo install -m 755 lociterm "${INSTALL_DIR}/lociterm"
     else
-        install -m 755 ghostterm "${INSTALL_DIR}/ghostterm"
+        install -m 755 lociterm "${INSTALL_DIR}/lociterm"
     fi
 }
 
@@ -61,8 +61,8 @@ build_from_source() {
 
 setup_systemd() {
     local user="$1"
-    local data_dir="/var/lib/ghostterm"
-    local service_file="/etc/systemd/system/ghostterm@.service"
+    local data_dir="/var/lib/lociterm"
+    local service_file="/etc/systemd/system/lociterm@.service"
 
     info "Setting up systemd service for user: ${user}"
 
@@ -77,7 +77,7 @@ After=network.target
 [Service]
 Type=simple
 User=%i
-ExecStart=/usr/local/bin/ghostterm --port ${PORT} --data-dir /var/lib/ghostterm
+ExecStart=/usr/local/bin/lociterm --port ${PORT} --data-dir /var/lib/lociterm
 Restart=on-failure
 RestartSec=5
 Environment=LANG=en_US.UTF-8
@@ -87,20 +87,20 @@ WantedBy=multi-user.target
 UNIT
 
     systemctl daemon-reload
-    systemctl enable "ghostterm@${user}"
-    systemctl start "ghostterm@${user}"
+    systemctl enable "lociterm@${user}"
+    systemctl start "lociterm@${user}"
 
-    info "Service started: ghostterm@${user}"
+    info "Service started: lociterm@${user}"
 }
 
 # ── macOS (launchd) ──────────────────────────────────────────────
 
 setup_launchd() {
     local user="$1"
-    local data_dir="${HOME}/.local/share/ghostterm"
+    local data_dir="${HOME}/.local/share/lociterm"
     local plist_dir="${HOME}/Library/LaunchAgents"
-    local plist_file="${plist_dir}/com.loci-terminal.ghostterm.plist"
-    local log_dir="${HOME}/Library/Logs/ghostterm"
+    local plist_file="${plist_dir}/com.loci-terminal.lociterm.plist"
+    local log_dir="${HOME}/Library/Logs/lociterm"
 
     info "Setting up launchd service for user: ${user}"
 
@@ -112,10 +112,10 @@ setup_launchd() {
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.loci-terminal.ghostterm</string>
+    <string>com.loci-terminal.lociterm</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/local/bin/ghostterm</string>
+        <string>/usr/local/bin/lociterm</string>
         <string>--port</string>
         <string>${PORT}</string>
         <string>--data-dir</string>
@@ -151,9 +151,9 @@ print_uninstall_info() {
     echo ""
     if [[ "$OS" == "Darwin" ]]; then
         info "To uninstall:"
-        info "  launchctl unload ~/Library/LaunchAgents/com.loci-terminal.ghostterm.plist"
-        info "  rm ~/Library/LaunchAgents/com.loci-terminal.ghostterm.plist"
-        info "  sudo rm /usr/local/bin/ghostterm"
+        info "  launchctl unload ~/Library/LaunchAgents/com.loci-terminal.lociterm.plist"
+        info "  rm ~/Library/LaunchAgents/com.loci-terminal.lociterm.plist"
+        info "  sudo rm /usr/local/bin/lociterm"
     else
         info "To uninstall: sudo bash deploy/uninstall.sh"
     fi
@@ -175,8 +175,8 @@ check_macos_permissions() {
         warn " access ~/Documents, ~/Desktop, etc."
         warn ""
         warn " 1. System Settings will open automatically"
-        warn " 2. Click '+' and add 'ghostterm'"
-        warn "    (located at /usr/local/bin/ghostterm)"
+        warn " 2. Click '+' and add 'lociterm'"
+        warn "    (located at /usr/local/bin/lociterm)"
         warn " 3. Restart the service"
         warn ""
         info "Opening System Settings..."
@@ -240,7 +240,7 @@ main() {
             ;;
         *)
             warn "Unknown OS: ${OS}. Binary installed but no service configured."
-            warn "Run manually: ghostterm --port ${PORT}"
+            warn "Run manually: lociterm --port ${PORT}"
             ;;
     esac
 
@@ -254,16 +254,16 @@ main() {
         check_macos_permissions
         echo ""
         info "Management:"
-        info "  launchctl list | grep ghostterm     # check status"
-        info "  launchctl stop com.loci-terminal.ghostterm   # stop"
-        info "  launchctl start com.loci-terminal.ghostterm  # start"
-        info "  tail -f ~/Library/Logs/ghostterm/stdout.log  # logs"
+        info "  launchctl list | grep lociterm     # check status"
+        info "  launchctl stop com.loci-terminal.lociterm   # stop"
+        info "  launchctl start com.loci-terminal.lociterm  # start"
+        info "  tail -f ~/Library/Logs/lociterm/stdout.log  # logs"
     else
         echo ""
         info "Management:"
-        info "  systemctl status ghostterm@${user}"
-        info "  systemctl restart ghostterm@${user}"
-        info "  journalctl -u ghostterm@${user} -f"
+        info "  systemctl status lociterm@${user}"
+        info "  systemctl restart lociterm@${user}"
+        info "  journalctl -u lociterm@${user} -f"
     fi
 
     print_uninstall_info

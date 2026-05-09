@@ -2,7 +2,12 @@ import { useAppStore } from '../../stores/appStore';
 import { TabBar } from './TabBar';
 import { TerminalView } from './TerminalView';
 
-export function TerminalPanel() {
+interface TerminalPanelProps {
+  showMenuButton?: boolean;
+  onMenuClick?: () => void;
+}
+
+export function TerminalPanel({ showMenuButton, onMenuClick }: TerminalPanelProps) {
   const { activeSessionId, activeWorkspaceId, sessions } = useAppStore();
   const currentSessions = activeWorkspaceId ? sessions[activeWorkspaceId] || [] : [];
 
@@ -14,7 +19,7 @@ export function TerminalPanel() {
       width: '100%',
       overflow: 'hidden',
     }}>
-      <TabBar />
+      <TabBar showMenuButton={showMenuButton} onMenuClick={onMenuClick} />
       <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
         {currentSessions.map((sess) => (
           <div

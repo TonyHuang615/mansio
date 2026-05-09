@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ui } from '../../lib/theme';
+import { useEffectiveTheme } from '../../hooks/useEffectiveTheme';
 
 interface LoginFormProps {
   needsSetup: boolean;
@@ -7,6 +7,7 @@ interface LoginFormProps {
 }
 
 export function LoginForm({ needsSetup, onSuccess }: LoginFormProps) {
+  const { ui } = useEffectiveTheme();
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -39,15 +40,19 @@ export function LoginForm({ needsSetup, onSuccess }: LoginFormProps) {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      height: '100vh',
-      backgroundColor: ui.terminalBg,
+      minHeight: '100vh',
+      width: '100vw',
+      backgroundColor: ui.appBg,
       fontFamily: "'JetBrains Mono', monospace",
+      padding: '24px',
+      boxSizing: 'border-box',
     }}>
       <form onSubmit={handleSubmit} style={{
         display: 'flex',
         flexDirection: 'column',
         gap: '16px',
-        width: '320px',
+        width: '100%',
+        maxWidth: '320px',
       }}>
         <div style={{
           color: ui.textPrimary,
@@ -56,7 +61,7 @@ export function LoginForm({ needsSetup, onSuccess }: LoginFormProps) {
           textAlign: 'center',
           marginBottom: '8px',
         }}>
-          GhostTerm
+          LociTerm
         </div>
 
         <div style={{
@@ -77,12 +82,13 @@ export function LoginForm({ needsSetup, onSuccess }: LoginFormProps) {
             backgroundColor: ui.tabActiveBg,
             border: `1px solid ${ui.sidebarBorder}`,
             color: ui.textPrimary,
-            fontSize: '14px',
+            fontSize: '16px',
             fontFamily: 'inherit',
-            padding: '10px 12px',
+            padding: '12px 14px',
             outline: 'none',
             width: '100%',
             boxSizing: 'border-box',
+            borderRadius: 4,
           }}
         />
 
@@ -99,12 +105,14 @@ export function LoginForm({ needsSetup, onSuccess }: LoginFormProps) {
             backgroundColor: ui.accent,
             border: 'none',
             color: '#fff',
-            fontSize: '13px',
+            fontSize: '14px',
             fontFamily: 'inherit',
             fontWeight: 600,
-            padding: '10px',
+            padding: '12px',
             cursor: loading ? 'wait' : 'pointer',
             opacity: loading || !password ? 0.6 : 1,
+            borderRadius: 4,
+            minHeight: 44,
           }}
         >
           {needsSetup ? 'Set Password' : 'Login'}

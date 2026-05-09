@@ -31,9 +31,9 @@ sudo bash deploy/install.sh
 
 ```bash
 # 관리
-systemctl status ghostterm@$(whoami)
-systemctl restart ghostterm@$(whoami)
-journalctl -u ghostterm@$(whoami) -f
+systemctl status lociterm@$(whoami)
+systemctl restart lociterm@$(whoami)
+journalctl -u lociterm@$(whoami) -f
 
 # 포트 변경
 sudo bash deploy/install.sh --port 3000
@@ -56,7 +56,7 @@ docker compose up -d --build
 ```
 
 **컨테이너 재시작 시 유지되는 것:**
-- `/home/ghostterm` — 설치한 도구, 프로젝트 파일, 셸 설정 (Docker 볼륨)
+- `/home/lociterm` — 설치한 도구, 프로젝트 파일, 셸 설정 (Docker 볼륨)
 - `/data` — 워크스페이스/세션 메타데이터 (Docker 볼륨)
 
 **유지되지 않는 것:**
@@ -99,13 +99,13 @@ docker compose up -d --build
 ### tmux 영속성 동작 방식
 
 ```
-1. 탭 생성     → tmux new-session -d -s gt_{id} -c $HOME
-2. 브라우저 접속 → creack/pty가 "tmux attach -t gt_{id}" 실행
+1. 탭 생성     → tmux new-session -d -s lt_{id} -c $HOME
+2. 브라우저 접속 → creack/pty가 "tmux attach -t lt_{id}" 실행
                   PTY fd를 WebSocket에 브릿지 (binary 프레임)
 3. 브라우저 종료 → PTY (attach 프로세스)만 종료
                   tmux 세션은 백그라운드에서 계속 실행
 4. 재접속       → 새로운 "tmux attach" → 스크롤백 + 프로세스 복원
-5. 탭 삭제     → tmux kill-session -t gt_{id}
+5. 탭 삭제     → tmux kill-session -t lt_{id}
 ```
 
 tmux 서버는 Go 프로세스와 독립적으로 동작합니다. Go 서버가 크래시하거나 재시작해도 tmux 세션은 유지됩니다 (호스트 직접 설치에만 해당 — Docker는 컨테이너 재시작 시 tmux 세션 소멸).
@@ -148,7 +148,7 @@ GET    /api/v1/ws/terminal/:sessionId     # WebSocket 터미널
 
 ```
 loci-terminal/
-├── cmd/ghostterm/main.go              # 진입점, embed.FS, graceful shutdown
+├── cmd/lociterm/main.go              # 진입점, embed.FS, graceful shutdown
 ├── internal/
 │   ├── server/                        # HTTP 라우팅, 인증 미들웨어
 │   ├── api/                           # REST 핸들러 (workspace, session, auth)
@@ -167,7 +167,7 @@ loci-terminal/
 ├── deploy/
 │   ├── install.sh                     # 호스트 설치 스크립트 (빌드 + systemd)
 │   ├── uninstall.sh                   # 제거 스크립트
-│   └── ghostterm.service              # systemd 유닛 템플릿
+│   └── lociterm.service              # systemd 유닛 템플릿
 ├── Dockerfile                         # 멀티 스테이지 빌드 (Ubuntu 24.04 런타임)
 ├── docker-compose.yml                 # Docker 배포 (영구 볼륨 포함)
 └── Makefile

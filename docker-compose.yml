@@ -1,13 +1,13 @@
 services:
-  ghostterm:
+  lociterm:
     build: .
     ports:
       - "8080:8080"
     volumes:
-      - ghostterm-data:/data
-      - ghostterm-home:/home/ghostterm
+      - lociterm-data:/data
+      - lociterm-home:/home/lociterm
     restart: unless-stopped
 
 volumes:
-  ghostterm-data:
-  ghostterm-home:
+  lociterm-data:
+  lociterm-home:

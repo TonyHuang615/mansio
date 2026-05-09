@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/younkyumjin/ghostterm/internal/model"
-	"github.com/younkyumjin/ghostterm/internal/store"
+	"github.com/younkyumjin/lociterm/internal/model"
+	"github.com/younkyumjin/lociterm/internal/store"
 )
 
 type SessionHandler struct {
