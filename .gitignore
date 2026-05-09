@@ -1,6 +1,7 @@
 /lociterm
 data/
 .omc/
+.claude/
 cmd/lociterm/frontend/
 frontend/dist/
 frontend/node_modules/
