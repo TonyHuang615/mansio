@@ -1,36 +1,46 @@
-# Loci Terminal
+# LociTerm
 
 [English](README.md) | **中文** | [한국어](README.ko.md)
 
-基于 Web 的多终端服务器。通过浏览器访问服务器终端。支持 Docker 或主机原生安装自托管。
+支持持久会话的基于 Web 的多终端服务器。在桌面或移动端浏览器中访问服务器终端。可在 Linux 或 macOS 上以原生安装或 Docker 方式自托管。
 
 ## 功能特性
 
-- **工作区与标签页** — 将终端组织到工作区中。每个工作区包含多个标签页。右键单击可重命名或删除。
-- **持久会话 (tmux)** — 关闭浏览器，进程继续运行。随时重新连接，包括完整的滚动历史记录。会话在服务器重启后依然存活。
-- **单文件二进制** — 约 10MB 的 Go 二进制文件，内嵌 React 前端。除 tmux 外无其他外部依赖。
-- **密码认证** — bcrypt 哈希密码与会话 Cookie。首次启动时设置密码。
-- **CJK 支持** — 完整的 Unicode 支持，包括中文、韩文、日文字符和 Box-drawing 字符。
-- **两种部署模式** — 主机原生安装（完全主机访问，类似 SSH）或 Docker（隔离环境）。
+- **工作区与标签页** — 将终端组织到工作区中，每个工作区可包含多个标签页。右键单击可重命名或删除。
+- **持久会话 (tmux)** — 关闭浏览器，进程继续运行。重新连接时完整恢复滚动历史。会话在浏览器断开和服务器重启后均存活。
+- **单文件二进制** — 约 10MB 的 Go 二进制文件，内嵌 React 前端。除 `tmux` 外无其他外部依赖。
+- **浅色 / 深色 / 系统主题** — 自动跟随系统偏好，或固定为浅色/深色。ANSI 调色板针对两种背景均经过 ≥4.5:1 对比度调优。
+- **拖放上传** — 将文件拖入终端即可上传，结果路径会自动粘贴到提示符。
+- **Shift+Enter 换行** — 输入字面换行而不提交命令（在 REPL 和 AI CLI 的多行输入中很有用）。
+- **移动端友好** — 在窄屏上侧边栏自动折叠，并提供触摸友好的命中区域。
+- **密码认证** — bcrypt 哈希 + HttpOnly 会话 Cookie。首次启动时设置。
+- **CJK 支持** — 完整 Unicode 支持，包括中/韩/日字符与 Box-drawing 字符。
+- **两种部署模式** — 原生安装（与 SSH 相同的主机访问）或 Docker（隔离环境）。
 
 ## 部署
 
-### 方式一：主机原生安装（需要完全主机访问时推荐）
+### 方式一：原生安装（Linux systemd 或 macOS launchd）
 
-Web 终端将拥有与直接登录服务器相同的访问权限 — 相同的文件、工具和环境。
+Web 终端将拥有与直接登录主机相同的访问权限 — 相同的文件、工具与环境。
 
-**前置条件：** Go 1.22+, Node.js 20+, tmux
+**前置条件：** Go 1.22+, Node.js 20+, tmux, git
 
 ```bash
 git clone https://github.com/Younkyum/Loci-Terminal.git
 cd Loci-Terminal
+
+# Linux
 sudo bash deploy/install.sh
+
+# macOS（脚本本身无需 sudo，仅在写入 /usr/local/bin 时内部调用 sudo）
+bash deploy/install.sh
 ```
 
-安装脚本从源码构建、安装二进制文件，并设置 systemd 服务。
+安装脚本会自动检测操作系统、从源码构建、将二进制安装到 `/usr/local/bin/lociterm`，并注册系统服务。
+
+#### Linux (systemd)
 
 ```bash
-# 管理
 systemctl status lociterm@$(whoami)
 systemctl restart lociterm@$(whoami)
 journalctl -u lociterm@$(whoami) -f
@@ -42,11 +52,29 @@ sudo bash deploy/install.sh --port 3000
 sudo bash deploy/uninstall.sh
 ```
 
-**Cloudflare Tunnel：** 开箱即用。将隧道指向 `http://localhost:8080`，Cloudflare 自动处理 HTTPS 和 WebSocket 代理。
+数据目录：`/var/lib/lociterm`
+
+#### macOS (launchd)
+
+```bash
+launchctl list | grep lociterm                       # 状态
+launchctl stop  com.loci-terminal.lociterm           # 停止
+launchctl start com.loci-terminal.lociterm           # 启动
+tail -f ~/Library/Logs/lociterm/stdout.log           # 日志
+
+# 卸载
+bash deploy/uninstall.sh
+```
+
+数据目录：`~/.local/share/lociterm` · 日志：`~/Library/Logs/lociterm/`
+
+> **macOS 完全磁盘访问权限：** macOS 会沙盒化对 `~/Documents`、`~/Desktop` 等目录的访问。LociTerm 在首次启动时会调用 `/api/v1/health` 检查权限，若被阻止则在 Web UI 中以全屏模态显示分步指引（系统设置 → 隐私与安全性 → 完全磁盘访问 → 添加 `/usr/local/bin/lociterm`）。安装脚本也会自动打开对应的系统设置面板。
+
+**Cloudflare Tunnel：** 开箱即用。将隧道指向 `http://localhost:8080`，Cloudflare 自动处理 HTTPS 与 WebSocket 代理。
 
 ### 方式二：Docker（隔离环境）
 
-在隔离的 Ubuntu 24.04 容器中运行，预装 Node.js 20、Python3 和构建工具。主目录通过 Docker 卷在容器重启后持久化。
+在预装 Node.js 20、Python 3 与构建工具的 Ubuntu 24.04 容器中运行。主目录通过 Docker 卷在容器重启后持久化。
 
 ```bash
 git clone https://github.com/Younkyum/Loci-Terminal.git
@@ -61,9 +89,9 @@ docker compose up -d --build
 
 **不保留的内容：**
 - tmux 会话（运行中的进程）— 容器重启时终止
-- 通过 `apt` 安装的系统包 — 需添加到 Dockerfile 中永久保留
+- 通过 `apt` 安装的系统包 — 需添加到 Dockerfile 中以永久保留
 
-### 配置选项
+### CLI 选项
 
 | 参数 | 说明 | 默认值 |
 |------|------|--------|
@@ -79,6 +107,7 @@ docker compose up -d --build
 │                     │           │                                  │
 │ 侧边栏 ──REST──────────────────> /api/v1/workspaces               │
 │ 标签栏 ──REST──────────────────> /api/v1/sessions                  │
+│ Drop  ──multipart─────────────> /api/v1/sessions/:id/upload      │
 │ xterm.js ═══WS═════════════════> /api/v1/ws/terminal/:id           │
 │  二进制帧（I/O）      │          │   ├── tmux.Manager               │
 │  JSON（控制）         │          │   │   └── tmux 会话（持久）       │
@@ -91,10 +120,10 @@ docker compose up -d --build
 | 层级 | 技术 |
 |------|------|
 | 前端 | React 19, TypeScript, xterm.js, Zustand, Vite |
-| 后端 | Go（stdlib net/http）, gorilla/websocket, creack/pty |
-| 持久化 | tmux（会话）, SQLite via modernc.org/sqlite（元数据） |
-| 认证 | bcrypt + 会话 Cookie |
-| 部署 | systemd 服务或 Docker 多阶段构建（Ubuntu 24.04） |
+| 后端 | Go（stdlib `net/http`）, gorilla/websocket, creack/pty |
+| 持久化 | tmux（会话）, SQLite via `modernc.org/sqlite`（元数据） |
+| 认证 | bcrypt + HttpOnly 会话 Cookie（7 天过期） |
+| 部署 | systemd（Linux）· launchd（macOS）· Docker 多阶段构建（Ubuntu 24.04） |
 
 ### tmux 持久化原理
 
@@ -108,7 +137,7 @@ docker compose up -d --build
 5. 删除标签页  → tmux kill-session -t lt_{id}
 ```
 
-tmux 服务器独立于 Go 进程运行。即使 Go 服务器崩溃或重启，tmux 会话也不会丢失（仅限主机原生安装 — Docker 容器重启时 tmux 会话会丢失）。
+tmux 服务器独立于 Go 进程运行。即使 Go 服务器崩溃或重启，tmux 会话也不会丢失（仅限原生安装 — Docker 容器重启时 tmux 会话会丢失）。
 
 ### WebSocket 协议
 
@@ -123,9 +152,15 @@ tmux 服务器独立于 Go 进程运行。即使 Go 服务器崩溃或重启，t
 
 二进制帧传输原始终端 I/O，零编码开销。
 
+### 文件上传
+
+将文件拖到终端面板上 → 通过 `multipart/form-data` POST 至 `/api/v1/sessions/:id/upload`，保存到 `~/uploads/` 下（自动避免文件名冲突），生成的绝对路径会粘贴到终端，便于直接用于下一条命令。默认上限：**每次上传 100 MiB**。
+
 ### REST API
 
 ```
+GET    /api/v1/health                # 健康检查 + macOS 权限状态
+
 POST   /api/v1/auth/setup            # 首次密码设置
 POST   /api/v1/auth/login            # 登录
 POST   /api/v1/auth/logout           # 登出
@@ -141,6 +176,7 @@ POST   /api/v1/workspaces/:wid/sessions   # 创建会话
 PATCH  /api/v1/sessions/:id               # 重命名会话
 DELETE /api/v1/sessions/:id               # 删除会话（终止 tmux）
 
+POST   /api/v1/sessions/:id/upload        # multipart/form-data 文件上传
 GET    /api/v1/ws/terminal/:sessionId     # WebSocket 终端
 ```
 
@@ -150,8 +186,8 @@ GET    /api/v1/ws/terminal/:sessionId     # WebSocket 终端
 loci-terminal/
 ├── cmd/lociterm/main.go              # 入口点、embed.FS、优雅关闭
 ├── internal/
-│   ├── server/                        # HTTP 路由、认证中间件
-│   ├── api/                           # REST 处理器（workspace, session, auth）
+│   ├── server/                        # HTTP 路由、认证中间件、/health
+│   ├── api/                           # REST 处理器（workspace, session, auth, upload）
 │   ├── ws/                            # WebSocket 升级 + PTY 桥接
 │   ├── tmux/                          # tmux 会话生命周期管理
 │   ├── store/                         # SQLite 持久化 + 迁移
@@ -159,15 +195,24 @@ loci-terminal/
 ├── frontend/src/
 │   ├── components/
 │   │   ├── Auth/LoginForm.tsx         # 登录/设置表单
-│   │   ├── Sidebar/Sidebar.tsx        # 工作区列表 + 上下文菜单
-│   │   └── Terminal/                  # TabBar, TerminalPanel, TerminalView
-│   ├── hooks/useTerminal.ts           # xterm.js + WebSocket 生命周期
-│   ├── stores/appStore.ts             # Zustand 状态管理
-│   └── lib/theme.ts                   # Ghostty 风格暗色主题
+│   │   ├── Sidebar/Sidebar.tsx        # 工作区列表 + 主题切换 + 上下文菜单
+│   │   └── Terminal/                  # TabBar, TerminalPanel, TerminalView（拖放区）
+│   ├── hooks/
+│   │   ├── useTerminal.ts             # xterm.js + WebSocket 生命周期
+│   │   ├── useEffectiveTheme.ts       # system/light/dark 解析器
+│   │   ├── useMediaQuery.ts           # 移动端断点检测
+│   │   └── shiftEnter.ts              # Shift+Enter → 字面换行
+│   ├── stores/
+│   │   ├── appStore.ts                # Zustand：工作区/会话/活动状态
+│   │   └── themeStore.ts              # 持久化的主题模式
+│   ├── api/upload.ts                  # 多部分上传客户端
+│   └── lib/
+│       ├── theme.ts                   # 浅色/深色 UI 调色板与 xterm 主题
+│       └── contrast.ts                # WCAG 对比度工具（测试中使用）
 ├── deploy/
-│   ├── install.sh                     # 主机安装脚本（构建 + systemd）
-│   ├── uninstall.sh                   # 清洁卸载脚本
-│   └── lociterm.service              # systemd 单元模板
+│   ├── install.sh                    # 跨平台安装脚本（Linux+macOS）
+│   ├── uninstall.sh                  # 跨平台卸载脚本
+│   └── lociterm.service              # systemd 单元模板（Linux）
 ├── Dockerfile                         # 多阶段构建（Ubuntu 24.04 运行时）
 ├── docker-compose.yml                 # Docker 部署（含持久卷）
 └── Makefile
@@ -183,34 +228,42 @@ make test-frontend     # 仅前端测试
 # 开发模式（两个终端）
 make dev-backend       # 终端 1：Go 服务器（:8080）
 make dev-frontend      # 终端 2：Vite 开发服务器（代理）
+
+# 构建单文件自包含二进制
+make build             # → ./lociterm
 ```
 
 ## 设计决策
 
 | 决策 | 理由 |
 |------|------|
-| **Go stdlib net/http** | 约 12 个端点。Go 1.22+ ServeMux 原生支持方法路由。 |
+| **Go stdlib `net/http`** | 约 14 个端点。Go 1.22+ ServeMux 原生支持方法+路径路由。 |
 | **modernc.org/sqlite** | 纯 Go 实现，无需 CGo。支持静态二进制和交叉编译。 |
 | **tmux 持久化** | 会话在浏览器关闭和服务器重启后均存活。独立进程。 |
 | **二进制 WebSocket 帧** | 零编码开销。高吞吐量终端输出必需。 |
-| **会话 Cookie（非 JWT）** | 单用户自托管场景更简单且可撤销。 |
-| **Ubuntu 24.04（Docker）** | 基于 glibc，工具兼容性更好（Node.js、Claude Code 等）。 |
+| **HttpOnly 会话 Cookie（非 JWT）** | 单用户自托管场景更简单且可撤销。 |
+| **按生效主题分别配色** | 浅色/深色主题在 `theme.test.ts` 中均经 ≥4.5:1 对比度验证。 |
+| **Ubuntu 24.04（Docker）** | 基于 glibc，工具兼容性更好（Node.js、AI CLI 等）。 |
 
 ## 安全注意事项
 
-- 主机原生安装与 SSH 具有相同的访问级别 — 请使用强密码
+- 原生安装与 SSH 具有相同的访问级别 — 请使用强密码
 - 生产环境务必使用 HTTPS（推荐 Cloudflare Tunnel）
 - 通过防火墙或 VPN 限制端口访问
-- Docker 模式提供隔离 — 无法访问主机文件
+- Docker 模式提供隔离 — 无法访问卷之外的主机文件
+- 上传经过 sanitize（防路径穿越、NUL 字节）并限制为 100 MiB
+- 会话 7 天后过期；登出立即失效
 
 ## 路线图
 
 - [ ] 代码审查面板（git diff 查看器）
 - [ ] 多用户支持
 - [ ] 标签页拖拽排序
-- [ ] 终端搜索
-- [ ] 自定义主题
+- [ ] 终端滚动历史搜索
+- [ ] 自定义主题预设
 - [ ] HTTPS/TLS 内置支持
+
+完整待办见 [TODO.md](TODO.md)。
 
 ## 许可证
 
