@@ -15,10 +15,12 @@ COPY . .
 COPY --from=frontend-builder /app/frontend/dist ./cmd/ghostterm/frontend/dist
 RUN CGO_ENABLED=0 go build -ldflags="-s -w" -o /ghostterm ./cmd/ghostterm
 
-# Stage 3: Runtime
-FROM alpine:3.20
-RUN apk add --no-cache bash zsh tmux shadow sudo \
-    && adduser -D -h /home/ghostterm ghostterm \
+# Stage 3: Runtime (Ubuntu)
+FROM ubuntu:24.04
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        bash zsh tmux sudo curl git ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd -m -s /bin/bash ghostterm \
     && echo "ghostterm ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers
 WORKDIR /home/ghostterm
 COPY --from=go-builder /ghostterm /usr/local/bin/ghostterm
