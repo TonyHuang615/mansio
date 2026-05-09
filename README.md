@@ -5,7 +5,7 @@
 [![Go](https://img.shields.io/badge/Go-1.22+-00ADD8.svg?logo=go)](https://go.dev/)
 [![React](https://img.shields.io/badge/React-19-61DAFB.svg?logo=react)](https://react.dev/)
 [![tmux](https://img.shields.io/badge/tmux-persistent-1BB91F.svg)](https://github.com/tmux/tmux)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+[![License: GPL v3+](https://img.shields.io/badge/License-GPLv3+-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
 > **A web-based, multi-terminal server with persistent tmux sessions.**
 > Open your machine's terminal in any browser — desktop or mobile — close the tab, come back hours later, and find every process exactly where you left it.
@@ -491,4 +491,14 @@ See [TODO.md](TODO.md) for the full backlog.
 
 ## License
 
-MIT
+**GPL-3.0-or-later** — see [LICENSE](LICENSE) for the full text.
+
+LociTerm is free software: you can redistribute it and/or modify it
+under the terms of the GNU General Public License as published by the
+Free Software Foundation, either version 3 of the License, or (at your
+option) any later version.
+
+This is a copyleft license: any fork, redistribution, or modified
+version you publish must also be licensed under GPL-3.0-or-later and
+ship its source code. For third-party components bundled with
+LociTerm, see [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md).

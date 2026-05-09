@@ -5,7 +5,7 @@
 [![Go](https://img.shields.io/badge/Go-1.22+-00ADD8.svg?logo=go)](https://go.dev/)
 [![React](https://img.shields.io/badge/React-19-61DAFB.svg?logo=react)](https://react.dev/)
 [![tmux](https://img.shields.io/badge/tmux-persistent-1BB91F.svg)](https://github.com/tmux/tmux)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](https://opensource.org/licenses/MIT)
+[![License: GPL v3+](https://img.shields.io/badge/License-GPLv3+-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 
 > **支持持久 tmux 会话的基于 Web 的多终端服务器。**
 > 在桌面或移动端浏览器中打开主机终端 — 关闭标签页，几小时后再回来，所有进程依然保留在你离开时的状态。
@@ -491,4 +491,13 @@ Vite 开发服务器会把 API 与 WebSocket 请求代理到 `localhost:8080`，
 
 ## 许可证
 
-MIT
+**GPL-3.0-or-later** — 完整许可证文本见 [LICENSE](LICENSE)。
+
+LociTerm 是自由软件。你可以根据自由软件基金会发布的 GNU 通用公共
+许可证（第 3 版，或由你选择的任何更新版本）的条款重新分发和/或
+修改它。
+
+GPL 是 copyleft 许可证：任何对 LociTerm 的派生、再分发、修改后再
+发布的版本，都必须以 GPL-3.0-or-later 重新许可，并附带源代码。
+LociTerm 捆绑的第三方组件的许可证详见
+[THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)。
