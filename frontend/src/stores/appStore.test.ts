@@ -5,6 +5,14 @@ import {
   workspaceUnread,
   __resetActivityTrackingForTests,
 } from './appStore';
+import {
+  createLeaf,
+  createSplit,
+  findLeafById,
+  findLeafBySessionId,
+  __resetPanelIdForTests,
+  type PanelNode,
+} from '../lib/panelLayout';
 
 const { mockWorkspace, mockSession } = vi.hoisted(() => ({
   mockWorkspace: { id: 'ws-1', name: 'Test', sortOrder: 0, createdAt: '', updatedAt: '' },
@@ -42,9 +50,12 @@ describe('appStore', () => {
       sessionActivity: {},
       toasts: [],
       initialized: false,
+      layoutByWorkspace: {},
+      focusedPanelByWorkspace: {},
     });
     setVisibility('visible');
     __resetActivityTrackingForTests();
+    __resetPanelIdForTests();
     vi.useFakeTimers();
   });
 
@@ -374,6 +385,237 @@ describe('appStore', () => {
       });
       await useAppStore.getState().deleteSession('s-2');
       expect(useAppStore.getState().toasts).toHaveLength(0);
+    });
+  });
+
+  describe('panel layout actions', () => {
+    function seedSingleLeafLayout(leafId = 'leaf-A', sessionId: string | null = 's-1') {
+      const layout = createLeaf(sessionId, leafId);
+      useAppStore.setState({
+        workspaces: [mockWorkspace],
+        sessions: { 'ws-1': sessionId ? [{ ...mockSession, id: sessionId }] : [] },
+        activeWorkspaceId: 'ws-1',
+        activeSessionId: sessionId,
+        activeSessionByWorkspace: sessionId ? { 'ws-1': sessionId } : {},
+        layoutByWorkspace: { 'ws-1': layout },
+        focusedPanelByWorkspace: { 'ws-1': leafId },
+      });
+      return layout;
+    }
+
+    it('splitPanel wraps the focused leaf, focuses the new leaf, and clears activeSessionId derived from it', () => {
+      seedSingleLeafLayout('leaf-A', 's-1');
+      const newId = useAppStore.getState().splitPanel('leaf-A', 'row', 'after');
+      expect(newId).toBeTruthy();
+      const state = useAppStore.getState();
+      const root = state.layoutByWorkspace['ws-1'] as PanelNode;
+      if (root.kind !== 'split') throw new Error('expected split');
+      expect(root.direction).toBe('row');
+      expect(root.children).toHaveLength(2);
+      expect(state.focusedPanelByWorkspace['ws-1']).toBe(newId);
+      // New leaf has no session → derived activeSessionId is null.
+      expect(state.activeSessionId).toBeNull();
+    });
+
+    it('splitPanel with placement=before puts the new leaf first', () => {
+      seedSingleLeafLayout('leaf-A', 's-1');
+      useAppStore.getState().splitPanel('leaf-A', 'column', 'before');
+      const root = useAppStore.getState().layoutByWorkspace['ws-1'];
+      if (root.kind !== 'split') throw new Error('expected split');
+      expect(root.children[1].id).toBe('leaf-A');
+    });
+
+    it('focusPanel updates focus and derives activeSessionId from the new leaf', () => {
+      const a = createLeaf('s-1', 'A');
+      const b = createLeaf('s-2', 'B');
+      const root = createSplit('row', [a, b], [50, 50], 'split-1');
+      useAppStore.setState({
+        workspaces: [mockWorkspace],
+        sessions: { 'ws-1': [mockSession, { ...mockSession, id: 's-2' }] },
+        activeWorkspaceId: 'ws-1',
+        activeSessionId: 's-1',
+        layoutByWorkspace: { 'ws-1': root },
+        focusedPanelByWorkspace: { 'ws-1': 'A' },
+      });
+      useAppStore.getState().focusPanel('B');
+      const state = useAppStore.getState();
+      expect(state.focusedPanelByWorkspace['ws-1']).toBe('B');
+      expect(state.activeSessionId).toBe('s-2');
+    });
+
+    it('assignSession auto-detaches the session from any other leaf', () => {
+      const a = createLeaf('s-1', 'A');
+      const b = createLeaf(null, 'B');
+      const root = createSplit('row', [a, b], [50, 50], 'split-1');
+      useAppStore.setState({
+        workspaces: [mockWorkspace],
+        sessions: { 'ws-1': [mockSession] },
+        activeWorkspaceId: 'ws-1',
+        activeSessionId: 's-1',
+        layoutByWorkspace: { 'ws-1': root },
+        focusedPanelByWorkspace: { 'ws-1': 'A' },
+      });
+      useAppStore.getState().assignSession('B', 's-1');
+      const layout = useAppStore.getState().layoutByWorkspace['ws-1'];
+      expect(findLeafById(layout, 'A')?.sessionId).toBeNull();
+      expect(findLeafById(layout, 'B')?.sessionId).toBe('s-1');
+      expect(useAppStore.getState().activeSessionId).toBe('s-1');
+      expect(useAppStore.getState().focusedPanelByWorkspace['ws-1']).toBe('B');
+    });
+
+    it('resizeSplit updates only the matching split sizes', () => {
+      const a = createLeaf('s-1', 'A');
+      const b = createLeaf('s-2', 'B');
+      const root = createSplit('row', [a, b], [50, 50], 'split-1');
+      useAppStore.setState({
+        workspaces: [mockWorkspace],
+        sessions: { 'ws-1': [mockSession, { ...mockSession, id: 's-2' }] },
+        activeWorkspaceId: 'ws-1',
+        layoutByWorkspace: { 'ws-1': root },
+        focusedPanelByWorkspace: { 'ws-1': 'A' },
+      });
+      useAppStore.getState().resizeSplit('split-1', [30, 70]);
+      const layout = useAppStore.getState().layoutByWorkspace['ws-1'];
+      if (layout.kind !== 'split') throw new Error('expected split');
+      expect(layout.sizes).toEqual([30, 70]);
+    });
+
+    it('closePanel removes the leaf, kills its session, and flattens single-child splits', async () => {
+      const a = createLeaf('s-1', 'A');
+      const b = createLeaf('s-2', 'B');
+      const root = createSplit('row', [a, b], [50, 50], 'split-1');
+      useAppStore.setState({
+        workspaces: [mockWorkspace],
+        sessions: {
+          'ws-1': [
+            mockSession,
+            { ...mockSession, id: 's-2', title: 'Second' },
+          ],
+        },
+        activeWorkspaceId: 'ws-1',
+        activeSessionId: 's-1',
+        activeSessionByWorkspace: { 'ws-1': 's-1' },
+        layoutByWorkspace: { 'ws-1': root },
+        focusedPanelByWorkspace: { 'ws-1': 'A' },
+      });
+      await useAppStore.getState().closePanel('A');
+      const state = useAppStore.getState();
+      const layout = state.layoutByWorkspace['ws-1'];
+      // After removing A, the row split with only B collapses to leaf B.
+      expect(layout.kind).toBe('leaf');
+      expect((layout as { id: string }).id).toBe('B');
+      // s-1 is gone from the workspace.
+      expect(state.sessions['ws-1'].some((s) => s.id === 's-1')).toBe(false);
+      expect(state.activeSessionId).toBe('s-2');
+    });
+
+    it('closePanel on the only leaf leaves an empty leaf in place', async () => {
+      seedSingleLeafLayout('leaf-A', 's-1');
+      await useAppStore.getState().closePanel('leaf-A');
+      const layout = useAppStore.getState().layoutByWorkspace['ws-1'];
+      expect(layout.kind).toBe('leaf');
+      expect((layout as { sessionId: string | null }).sessionId).toBeNull();
+      expect(useAppStore.getState().activeSessionId).toBeNull();
+    });
+
+    it('setActiveSession assigns the session into the focused leaf when not already visible', () => {
+      const a = createLeaf(null, 'A');
+      const b = createLeaf('s-2', 'B');
+      const root = createSplit('row', [a, b], [50, 50], 'split-1');
+      useAppStore.setState({
+        workspaces: [mockWorkspace],
+        sessions: {
+          'ws-1': [
+            mockSession,
+            { ...mockSession, id: 's-2' },
+          ],
+        },
+        activeWorkspaceId: 'ws-1',
+        layoutByWorkspace: { 'ws-1': root },
+        focusedPanelByWorkspace: { 'ws-1': 'A' },
+      });
+      useAppStore.getState().setActiveSession('s-1');
+      const layout = useAppStore.getState().layoutByWorkspace['ws-1'];
+      expect(findLeafById(layout, 'A')?.sessionId).toBe('s-1');
+      expect(useAppStore.getState().activeSessionId).toBe('s-1');
+    });
+
+    it('setActiveSession focuses the existing leaf when the session is already visible elsewhere', () => {
+      const a = createLeaf('s-1', 'A');
+      const b = createLeaf('s-2', 'B');
+      const root = createSplit('row', [a, b], [50, 50], 'split-1');
+      useAppStore.setState({
+        workspaces: [mockWorkspace],
+        sessions: {
+          'ws-1': [
+            mockSession,
+            { ...mockSession, id: 's-2' },
+          ],
+        },
+        activeWorkspaceId: 'ws-1',
+        activeSessionId: 's-1',
+        layoutByWorkspace: { 'ws-1': root },
+        focusedPanelByWorkspace: { 'ws-1': 'A' },
+      });
+      useAppStore.getState().setActiveSession('s-2');
+      // B has s-2 already; setActiveSession should just focus B, not move it.
+      const state = useAppStore.getState();
+      expect(state.focusedPanelByWorkspace['ws-1']).toBe('B');
+      expect(findLeafBySessionId(state.layoutByWorkspace['ws-1'], 's-2')?.id).toBe('B');
+      expect(state.activeSessionId).toBe('s-2');
+    });
+
+    it('clearWorkspaceVisibleUnread clears unread for every visible session', () => {
+      const a = createLeaf('s-1', 'A');
+      const b = createLeaf('s-2', 'B');
+      const root = createSplit('row', [a, b], [50, 50], 'split-1');
+      useAppStore.setState({
+        workspaces: [mockWorkspace],
+        sessions: {
+          'ws-1': [
+            mockSession,
+            { ...mockSession, id: 's-2' },
+          ],
+        },
+        activeWorkspaceId: 'ws-1',
+        layoutByWorkspace: { 'ws-1': root },
+        focusedPanelByWorkspace: { 'ws-1': 'A' },
+        sessionActivity: {
+          's-1': { unread: true, lastOutputAt: 1, notifiedAt: 1 },
+          's-2': { unread: true, lastOutputAt: 1, notifiedAt: 1 },
+        },
+      });
+      useAppStore.getState().clearWorkspaceVisibleUnread();
+      const state = useAppStore.getState();
+      expect(sessionUnread(state, 's-1')).toBe(false);
+      expect(sessionUnread(state, 's-2')).toBe(false);
+    });
+
+    it('markSessionOutput does NOT flip unread for a session visible in a non-focused panel when the tab is visible', () => {
+      const a = createLeaf('s-1', 'A');
+      const b = createLeaf('s-2', 'B');
+      const root = createSplit('row', [a, b], [50, 50], 'split-1');
+      useAppStore.setState({
+        workspaces: [mockWorkspace],
+        sessions: {
+          'ws-1': [
+            mockSession,
+            { ...mockSession, id: 's-2' },
+          ],
+        },
+        activeWorkspaceId: 'ws-1',
+        activeSessionId: 's-1',
+        layoutByWorkspace: { 'ws-1': root },
+        focusedPanelByWorkspace: { 'ws-1': 'A' },
+      });
+      setVisibility('visible');
+      // s-2 is visible (in panel B) but not focused — output to it should NOT
+      // mark unread because the user can see it.
+      useAppStore.getState().markSessionOutput('s-2');
+      vi.advanceTimersByTime(600);
+      useAppStore.getState().markSessionOutput('s-2');
+      vi.advanceTimersByTime(2000);
+      expect(sessionUnread(useAppStore.getState(), 's-2')).toBe(false);
     });
   });
 

@@ -247,11 +247,15 @@ export function useTerminal({ sessionId, containerRef, theme }: UseTerminalOptio
 
     let didReattach = false;
     if (inst.terminal.element) {
-      // Re-attach the cached element to the (possibly new) container.
-      // VS Code's pattern: keep one xterm instance per session alive but
-      // move its DOM node in/out as the user switches tabs. Avoids
-      // xterm.js's display:none corruption (xtermjs/xterm.js#494, #3029).
-      if (inst.terminal.element.parentElement !== container) {
+      // The cached element may currently be attached to a sibling leaf's
+      // container (multi-panel: same session was just dragged here, OR the
+      // owning component unmounted and we're a fresh mount for the same
+      // session). Either way, make the move explicit so the read of
+      // `parentElement` and the appendChild can't interleave with a
+      // ResizeObserver tick mid-flight.
+      const currentParent = inst.terminal.element.parentElement;
+      if (currentParent !== container) {
+        if (currentParent) currentParent.removeChild(inst.terminal.element);
         container.appendChild(inst.terminal.element);
         didReattach = true;
       }

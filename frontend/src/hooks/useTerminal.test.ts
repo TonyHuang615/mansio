@@ -148,6 +148,28 @@ describe('useTerminal — VS Code detach/attach pattern', () => {
     expect(b.element?.parentElement).toBe(container);
   });
 
+  it('cross-leaf move: session A migrates between two simultaneously mounted hooks (multi-panel drag)', () => {
+    // Simulates assignSession() moving A from leaf 1 to leaf 2: both hooks
+    // exist at once, and on the same React commit, hook-1's sessionId flips
+    // to null while hook-2's flips to 'A'. The cached xterm element must
+    // end up in hook-2's container regardless of effect ordering.
+    const h1 = harness('A');
+    const a = created[0];
+    const c1 = h1.result.current!;
+    expect(a.element?.parentElement).toBe(c1);
+
+    const h2 = harness(null);
+    const c2 = h2.result.current!;
+
+    // Flip: h1 -> null, h2 -> 'A'
+    h1.rerender({ sid: null });
+    h2.rerender({ sid: 'A' });
+
+    expect(a.element?.parentElement).toBe(c2);
+    // No second xterm instance was created — the cache moved.
+    expect(created).toHaveLength(1);
+  });
+
   it('A → B → A re-attaches the cached A element AND triggers refresh', () => {
     const { result, rerender } = harness('A');
     const a = created[0];
