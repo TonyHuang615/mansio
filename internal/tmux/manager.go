@@ -24,6 +24,15 @@ type Manager struct {
 	shell       string
 	configPath  string
 	socketLabel string
+	// lastSize tracks the last (cols, rows) we actually sent to tmux per session.
+	// Skips redundant `tmux resize-window` shell-outs when client sends the same
+	// dimensions repeatedly (common with ResizeObserver storms before the
+	// frontend-side dedupe lands).
+	lastSize map[string]struct{ cols, rows uint16 }
+	// resizeShellOut is the function used to invoke `tmux resize-window`.
+	// Tests override this to count invocations and verify dedupe behaviour
+	// without requiring a live tmux server. nil means "use the real tmux command".
+	resizeShellOut func(name string, cols, rows uint16) error
 }
 
 func NewManager(dataDir string) *Manager {
@@ -38,17 +47,14 @@ func NewManager(dataDir string) *Manager {
 		shell:       shell,
 		configPath:  configPath,
 		socketLabel: deriveSocketLabel(dataDir),
+		lastSize:    make(map[string]struct{ cols, rows uint16 }),
 	}
 }
 
 func (m *Manager) CreateSession(sessionID string, cols, rows uint16) error {
 	name := sessionPrefix + sessionID
 
-	home, _ := os.UserHomeDir()
-	cmd := m.tmuxCmd("new-session", "-d", "-s", name,
-		"-x", fmt.Sprintf("%d", cols), "-y", fmt.Sprintf("%d", rows),
-		"-c", home,
-		m.shell)
+	cmd := m.newSessionCmd(name, cols, rows)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("tmux new-session: %w: %s", err, string(out))
 	}
@@ -84,9 +90,7 @@ func (m *Manager) Attach(sessionID string, cols, rows uint16) (*AttachResult, er
 
 	recreated := false
 	if !m.tmuxSessionExists(name) {
-		cmd := m.tmuxCmd("new-session", "-d", "-s", name,
-			"-x", fmt.Sprintf("%d", cols), "-y", fmt.Sprintf("%d", rows),
-			m.shell)
+		cmd := m.newSessionCmd(name, cols, rows)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			return nil, fmt.Errorf("tmux new-session: %w: %s", err, string(out))
 		}
@@ -133,14 +137,40 @@ func (m *Manager) Detach(sessionID string, sess *Session) {
 	sess.Close()
 }
 
-func (m *Manager) Resize(sessionID string, cols, rows uint16) error {
-	name := sessionPrefix + sessionID
-
-	cmd := m.tmuxCmd("resize-window", "-t", name,
-		"-x", fmt.Sprintf("%d", cols), "-y", fmt.Sprintf("%d", rows))
-	if out, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("tmux resize: %w: %s", err, string(out))
+func (m *Manager) newSessionCmd(name string, cols, rows uint16) *exec.Cmd {
+	args := []string{
+		"new-session", "-d", "-s", name,
+		"-x", fmt.Sprintf("%d", cols), "-y", fmt.Sprintf("%d", rows),
 	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		args = append(args, "-c", home)
+	}
+	args = append(args, m.shell)
+	return m.tmuxCmd(args...)
+}
+
+func (m *Manager) Resize(sessionID string, cols, rows uint16) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if last, ok := m.lastSize[sessionID]; ok && last.cols == cols && last.rows == rows {
+		return nil
+	}
+
+	name := sessionPrefix + sessionID
+	if m.resizeShellOut != nil {
+		if err := m.resizeShellOut(name, cols, rows); err != nil {
+			return err
+		}
+	} else {
+		cmd := m.tmuxCmd("resize-window", "-t", name,
+			"-x", fmt.Sprintf("%d", cols), "-y", fmt.Sprintf("%d", rows))
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("tmux resize: %w: %s", err, string(out))
+		}
+	}
+
+	m.lastSize[sessionID] = struct{ cols, rows uint16 }{cols, rows}
 	return nil
 }
 
@@ -154,6 +184,7 @@ func (m *Manager) KillSession(sessionID string) error {
 		sess.Close()
 		delete(m.sessions, sessionID)
 	}
+	delete(m.lastSize, sessionID)
 	m.mu.Unlock()
 
 	name := sessionPrefix + sessionID
@@ -201,9 +232,8 @@ func (m *Manager) ListTmuxSessions() ([]string, error) {
 	}
 
 	var sessions []string
-	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
-		if strings.HasPrefix(line, sessionPrefix) {
-			id := strings.TrimPrefix(line, sessionPrefix)
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
+		if id, ok := strings.CutPrefix(line, sessionPrefix); ok {
 			sessions = append(sessions, id)
 		}
 	}

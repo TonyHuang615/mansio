@@ -18,8 +18,13 @@ interface TerminalInstance {
   terminal: Terminal;
   fitAddon: FitAddon;
   ws: WebSocket | null;
+  connecting: boolean;
   webgl: WebglAddon | null;
   reconnectTimer: number | undefined;
+  lastSentCols: number | undefined;
+  lastSentRows: number | undefined;
+  resizeDebounceTimer: number | undefined;
+  attached: boolean;
   listenersBound: boolean;
   // IME composition state — see bindInputListeners for why these exist.
   composing: boolean;
@@ -53,12 +58,11 @@ function createInstance(theme: ITheme): TerminalInstance {
     cursorStyle: 'block',
     allowProposedApi: true,
     scrollback: 10000,
-    // xterm only scrolls in whole-row units (~17px steps). Without easing,
-    // trackpad swipes feel choppy because every event snaps to a row boundary
-    // instantly. 125ms tweens the snap so the row granularity is no longer
-    // visible to the eye. (Sensitivity stays at xterm's default of 1 row/tick
-    // so small trackpad deltas don't blow past several rows per event.)
-    smoothScrollDuration: 125,
+    // Disable scroll easing — the 125ms animation adds perceptible latency on
+    // every Enter keystroke (cursor scrolls to bottom with 125ms easing).
+    // Trackpad scroll feels slightly choppier without easing, but keystroke
+    // responsiveness is the higher priority. (T2.2)
+    smoothScrollDuration: 0,
   });
   const fitAddon = new FitAddon();
   terminal.loadAddon(fitAddon);
@@ -68,8 +72,13 @@ function createInstance(theme: ITheme): TerminalInstance {
     terminal,
     fitAddon,
     ws: null,
+    connecting: false,
     webgl: null,
     reconnectTimer: undefined,
+    lastSentCols: undefined,
+    lastSentRows: undefined,
+    resizeDebounceTimer: undefined,
+    attached: false,
     listenersBound: false,
     composing: false,
     compositionSuppressUntil: 0,
@@ -86,8 +95,14 @@ function loadWebgl(inst: TerminalInstance): void {
   try {
     const webgl = new WebglAddon();
     webgl.onContextLoss(() => {
+      console.warn('WebGL context lost; attempting to reload addon');
       webgl.dispose();
       inst.webgl = null;
+      try {
+        loadWebgl(inst);
+      } catch {
+        console.warn('WebGL addon reload failed; using fallback renderer');
+      }
     });
     inst.terminal.loadAddon(webgl);
     inst.webgl = webgl;
@@ -159,18 +174,72 @@ function bindInputListeners(inst: TerminalInstance): void {
   });
 }
 
-function connectWebSocket(inst: TerminalInstance, sid: string): void {
+interface WebSocketTicketResponse {
+  ticket: string;
+}
+
+function isWebSocketTicketResponse(value: unknown): value is WebSocketTicketResponse {
+  return typeof value === 'object' && value !== null && 'ticket' in value && typeof value.ticket === 'string';
+}
+
+async function requestWebSocketTicket(): Promise<string> {
+  const res = await fetch('/api/v1/ws-ticket', {
+    method: 'POST',
+    credentials: 'same-origin',
+  });
+  if (!res.ok) {
+    throw new Error(`failed to request WebSocket ticket: ${res.status}`);
+  }
+
+  const data: unknown = await res.json();
+  if (!isWebSocketTicketResponse(data)) {
+    throw new Error('invalid WebSocket ticket response');
+  }
+  return data.ticket;
+}
+
+function scheduleReconnect(inst: TerminalInstance, sid: string): void {
+  clearTimeout(inst.reconnectTimer);
+  const delay = nextReconnectDelay(inst.reconnectAttempts);
+  inst.reconnectAttempts++;
+  inst.reconnectTimer = window.setTimeout(() => {
+    if (instances.has(sid)) {
+      void connectWebSocket(inst, sid);
+    }
+  }, delay);
+}
+
+async function connectWebSocket(inst: TerminalInstance, sid: string): Promise<void> {
+  if (inst.connecting || inst.ws?.readyState === WebSocket.CONNECTING || inst.ws?.readyState === WebSocket.OPEN) {
+    return;
+  }
+
+  inst.connecting = true;
+
+  let ticket: string;
+  try {
+    ticket = await requestWebSocketTicket();
+  } catch (err) {
+    inst.connecting = false;
+    console.warn(err);
+    scheduleReconnect(inst, sid);
+    return;
+  }
+
+  if (!instances.has(sid)) {
+    inst.connecting = false;
+    return;
+  }
+
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const ws = new WebSocket(`${protocol}//${window.location.host}/api/v1/ws/terminal/${sid}`);
+  const ws = new WebSocket(`${protocol}//${window.location.host}/api/v1/ws/terminal/${sid}?ticket=${encodeURIComponent(ticket)}`);
   ws.binaryType = 'arraybuffer';
 
   ws.onopen = () => {
+    inst.connecting = false;
     inst.reconnectAttempts = 0;
+    inst.attached = false;
     inst.fitAddon.fit();
-    const dims = inst.fitAddon.proposeDimensions();
-    if (dims) {
-      ws.send(JSON.stringify({ type: 'resize', cols: dims.cols, rows: dims.rows }));
-    }
   };
 
   ws.onmessage = (e) => {
@@ -182,6 +251,13 @@ function connectWebSocket(inst: TerminalInstance, sid: string): void {
       try {
         const msg = JSON.parse(e.data);
         if (msg.type === 'attached') {
+          inst.attached = true;
+          const dims = inst.fitAddon.proposeDimensions();
+          if (dims && dims.cols > 0 && dims.rows > 0 && inst.ws?.readyState === WebSocket.OPEN) {
+            inst.lastSentCols = dims.cols;
+            inst.lastSentRows = dims.rows;
+            inst.ws.send(JSON.stringify({ type: 'resize', cols: dims.cols, rows: dims.rows }));
+          }
           if (msg.recreated) {
             // Backend had to spawn a brand-new tmux session — prior shell is
             // gone. Surface this inline so the user doesn't think they just
@@ -197,14 +273,12 @@ function connectWebSocket(inst: TerminalInstance, sid: string): void {
   };
 
   ws.onclose = () => {
-    clearTimeout(inst.reconnectTimer);
-    const delay = nextReconnectDelay(inst.reconnectAttempts);
-    inst.reconnectAttempts++;
-    inst.reconnectTimer = window.setTimeout(() => {
-      if (instances.has(sid)) {
-        connectWebSocket(inst, sid);
-      }
-    }, delay);
+    inst.connecting = false;
+    scheduleReconnect(inst, sid);
+  };
+
+  ws.onerror = () => {
+    inst.connecting = false;
   };
 
   inst.ws = ws;
@@ -271,7 +345,7 @@ export function useTerminal({ sessionId, containerRef, theme }: UseTerminalOptio
     }
 
     if (!inst.ws || inst.ws.readyState === WebSocket.CLOSED) {
-      connectWebSocket(inst, sessionId);
+      void connectWebSocket(inst, sessionId);
     }
 
     previousSessionIdRef.current = sessionId;
@@ -279,16 +353,32 @@ export function useTerminal({ sessionId, containerRef, theme }: UseTerminalOptio
     const resizeObserver = new ResizeObserver(() => {
       const i = instances.get(sessionId);
       if (!i) return;
-      i.fitAddon.fit();
       const dims = i.fitAddon.proposeDimensions();
-      if (dims && i.ws?.readyState === WebSocket.OPEN) {
-        i.ws.send(JSON.stringify({ type: 'resize', cols: dims.cols, rows: dims.rows }));
-      }
+      if (!dims || dims.cols === 0 || dims.rows === 0) return;
+      if (dims.cols === i.lastSentCols && dims.rows === i.lastSentRows) return;
+
+      clearTimeout(i.resizeDebounceTimer);
+      i.resizeDebounceTimer = window.setTimeout(() => {
+        const inst = instances.get(sessionId);
+        if (!inst) return;
+        const d = inst.fitAddon.proposeDimensions();
+        if (!d || d.cols === 0 || d.rows === 0) return;
+        if (d.cols === inst.lastSentCols && d.rows === inst.lastSentRows) return;
+        if (!inst.attached) return;
+
+        inst.fitAddon.fit();
+        if (inst.ws?.readyState === WebSocket.OPEN) {
+          inst.lastSentCols = d.cols;
+          inst.lastSentRows = d.rows;
+          inst.ws.send(JSON.stringify({ type: 'resize', cols: d.cols, rows: d.rows }));
+        }
+      }, 80);
     });
     resizeObserver.observe(container);
 
     return () => {
       resizeObserver.disconnect();
+      clearTimeout(inst.resizeDebounceTimer);
     };
   }, [sessionId, containerRef, activeTheme]);
 
@@ -304,6 +394,7 @@ export function disposeTerminal(sessionId: string): void {
   const inst = instances.get(sessionId);
   if (!inst) return;
   clearTimeout(inst.reconnectTimer);
+  clearTimeout(inst.resizeDebounceTimer);
   inst.ws?.close();
   inst.terminal.dispose();
   instances.delete(sessionId);
