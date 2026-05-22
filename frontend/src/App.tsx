@@ -1,4 +1,13 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
+import {
+  DndContext,
+  DragOverlay,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from '@dnd-kit/core';
 import { useAppStore } from './stores/appStore';
 import { Sidebar } from './components/Sidebar/Sidebar';
 import { TerminalPanel } from './components/Terminal/TerminalPanel';
@@ -6,6 +15,8 @@ import { LoginForm } from './components/Auth/LoginForm';
 import { ToastContainer } from './components/Toast/ToastContainer';
 import { useEffectiveTheme } from './hooks/useEffectiveTheme';
 import { useMediaQuery, MOBILE_QUERY } from './hooks/useMediaQuery';
+import { zoneToSplit, type DropZone } from './lib/dropZone';
+import { findLeafBySessionId } from './lib/panelLayout';
 
 type AuthState = 'loading' | 'needs-setup' | 'needs-login' | 'authenticated';
 
@@ -108,13 +119,12 @@ export default function App() {
     return () => window.clearInterval(id);
   }, [initialized, pollActive]);
 
-  // getState() — the listener only needs activeSessionId at the moment
-  // visibility flips, so don't subscribe.
+  // getState() — the listener only needs to read the workspace layout at
+  // the moment visibility flips, so don't subscribe.
   useEffect(() => {
     const onVisibility = () => {
       if (document.visibilityState !== 'visible') return;
-      const { activeSessionId, clearSessionUnread } = useAppStore.getState();
-      if (activeSessionId) clearSessionUnread(activeSessionId);
+      useAppStore.getState().clearWorkspaceVisibleUnread();
     };
     document.addEventListener('visibilitychange', onVisibility);
     return () => document.removeEventListener('visibilitychange', onVisibility);
@@ -131,6 +141,66 @@ export default function App() {
         rafId.current = undefined;
       });
     }
+  }, []);
+
+  const [draggingTab, setDraggingTab] = useState<{ sessionId: string; title: string } | null>(null);
+
+  // distance=5 lets a quick click pass through as a normal click handler
+  // rather than starting a drag; only sustained pointer movement triggers
+  // the drag interaction.
+  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    const data = event.active.data.current as
+      | { type?: string; sessionId?: string; sessionTitle?: string }
+      | undefined;
+    if (data?.type === 'tab' && data.sessionId) {
+      setDraggingTab({ sessionId: data.sessionId, title: data.sessionTitle ?? '' });
+    }
+  }, []);
+
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    setDraggingTab(null);
+    const { active, over } = event;
+    if (!over) return;
+    const activeData = active.data.current as
+      | { type?: string; sessionId?: string }
+      | undefined;
+    const overData = over.data.current as
+      | { leafId?: string; zone?: DropZone }
+      | undefined;
+    if (
+      activeData?.type !== 'tab' ||
+      !activeData.sessionId ||
+      !overData?.leafId ||
+      !overData.zone
+    ) {
+      return;
+    }
+    const { sessionId } = activeData;
+    const { leafId, zone } = overData;
+    const state = useAppStore.getState();
+
+    // Drop-to-self: the dragged tab is already on the leaf the user just
+    // dropped it on. Center = obvious no-op; edge = also a no-op because
+    // splitting and re-assigning would leave the original half empty,
+    // which is rarely what the user meant.
+    const wid = state.activeWorkspaceId;
+    if (wid) {
+      const layout = state.layoutByWorkspace[wid];
+      if (layout) {
+        const sourceLeaf = findLeafBySessionId(layout, sessionId);
+        if (sourceLeaf && sourceLeaf.id === leafId) return;
+      }
+    }
+
+    if (zone === 'center') {
+      state.assignSession(leafId, sessionId);
+      return;
+    }
+    const split = zoneToSplit(zone);
+    const newLeafId = state.splitPanel(leafId, split.direction, split.placement);
+    if (newLeafId) state.assignSession(newLeafId, sessionId);
   }, []);
 
   const onMouseDown = useCallback((e: React.MouseEvent) => {
@@ -198,6 +268,7 @@ export default function App() {
   const showPermBanner = !!permWarning && !permDismissed;
 
   return (
+    <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
     <div style={{
       display: 'flex',
       flexDirection: 'column',
@@ -335,5 +406,25 @@ export default function App() {
       </div>
       <ToastContainer />
     </div>
+    <DragOverlay dropAnimation={null}>
+      {draggingTab && (
+        <div
+          style={{
+            padding: '4px 10px',
+            backgroundColor: ui.tabActiveBg,
+            border: `1px solid ${ui.accent}`,
+            borderRadius: 3,
+            color: ui.textPrimary,
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: 12,
+            whiteSpace: 'nowrap',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.35)',
+          }}
+        >
+          {draggingTab.title}
+        </div>
+      )}
+    </DragOverlay>
+    </DndContext>
   );
 }
