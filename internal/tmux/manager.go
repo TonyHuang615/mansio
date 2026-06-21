@@ -14,8 +14,13 @@ import (
 const sessionPrefix = "lt_"
 
 // Without `mouse on`, tmux's alt-screen triggers xterm.js's wheel→arrow-key translation.
+// `set-clipboard on` + the clipboard terminal-feature make tmux emit OSC 52 on a
+// mouse-drag copy; the frontend's OSC 52 handler turns that into a system-clipboard
+// write — so selecting copies, while mouse mode stays on for wheel scrollback.
 const tmuxConfigContents = `# Managed by Mansio — do not edit.
 set -g mouse on
+set -g set-clipboard on
+set -as terminal-features ',*:clipboard'
 `
 
 type Manager struct {

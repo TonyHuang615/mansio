@@ -68,6 +68,22 @@ function createInstance(theme: ITheme): TerminalInstance {
   terminal.loadAddon(fitAddon);
   terminal.loadAddon(new WebLinksAddon());
 
+  // Honor incoming OSC 52 (emitted by tmux `set-clipboard on`) so a tmux
+  // mouse-drag copy lands in the system clipboard while mouse mode stays ON
+  // (keeps wheel scrollback). Decode base64 as UTF-8 so CJK copies correctly.
+  terminal.parser.registerOscHandler(52, (data: string) => {
+    const sep = data.indexOf(';');
+    const payload = sep === -1 ? data : data.slice(sep + 1);
+    if (payload === '?') return true; // ignore clipboard read queries
+    try {
+      const bytes = Uint8Array.from(atob(payload), (c) => c.charCodeAt(0));
+      navigator.clipboard?.writeText(new TextDecoder().decode(bytes))?.catch(() => {});
+    } catch {
+      return false;
+    }
+    return true;
+  });
+
   return {
     terminal,
     fitAddon,
