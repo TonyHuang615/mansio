@@ -57,6 +57,9 @@ function createInstance(theme: ITheme): TerminalInstance {
     cursorBlink: true,
     cursorStyle: 'block',
     allowProposedApi: true,
+    // On macOS, ⌥(Option)+drag forces a local xterm selection even while tmux
+    // mouse mode stays on — so copy-on-select (below) can fire, incl. in Safari.
+    macOptionClickForcesSelection: true,
     scrollback: 10000,
     // Disable scroll easing — the 125ms animation adds perceptible latency on
     // every Enter keystroke (cursor scrolls to bottom with 125ms easing).
@@ -82,6 +85,19 @@ function createInstance(theme: ITheme): TerminalInstance {
       return false;
     }
     return true;
+  });
+
+  // Copy-on-select: when there IS an xterm selection (⌥+drag on macOS, or with
+  // tmux mouse off), copy it via execCommand('copy') — a synchronous, gesture-
+  // bound path that Safari allows (the async OSC 52 write above is blocked by
+  // Safari). xterm's own copy handler reads its internal selection on the event.
+  terminal.onSelectionChange(() => {
+    if (terminal.getSelection() === '') return;
+    try {
+      document.execCommand('copy');
+    } catch {
+      // best-effort; ignore
+    }
   });
 
   return {
