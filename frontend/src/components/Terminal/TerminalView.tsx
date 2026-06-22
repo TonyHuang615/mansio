@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useTerminal, pasteToTerminal } from '../../hooks/useTerminal';
+import { useTerminal, useSessionOwned, pasteToTerminal } from '../../hooks/useTerminal';
+import { takeFocus } from '../../lib/sessionLock';
 import { useEffectiveTheme } from '../../hooks/useEffectiveTheme';
 import { useMediaQuery, MOBILE_QUERY } from '../../hooks/useMediaQuery';
 import { uploadFile } from '../../api/upload';
@@ -14,6 +15,8 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
   const { ui, terminalTheme } = useEffectiveTheme();
   const isMobile = useMediaQuery(MOBILE_QUERY);
   useTerminal({ sessionId, containerRef, theme: terminalTheme });
+  // False when another browser window currently holds this session's terminal.
+  const owned = useSessionOwned(sessionId);
 
   // On mobile we route input through MobileInputBar instead of xterm's hidden
   // textarea (its 1px field breaks CJK IME composition on Android/iOS — see
@@ -124,6 +127,42 @@ export function TerminalView({ sessionId }: TerminalViewProps) {
           height: '100%',
         }}
       />
+
+      {sessionId && !owned && (
+        <div
+          onMouseDown={(e) => {
+            // Take over before the click reaches xterm, then swallow it so the
+            // takeover gesture itself doesn't get sent to the shell.
+            e.preventDefault();
+            e.stopPropagation();
+            takeFocus();
+          }}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 6,
+            alignItems: 'center',
+            justifyContent: 'center',
+            textAlign: 'center',
+            padding: 16,
+            backgroundColor: ui.overlayBg,
+            backdropFilter: 'blur(1px)',
+            color: ui.textPrimary,
+            fontFamily: "'JetBrains Mono', monospace",
+            cursor: 'pointer',
+            userSelect: 'none',
+            zIndex: 12,
+          }}
+        >
+          <div style={{ fontSize: 22, lineHeight: 1 }}>⏸</div>
+          <div style={{ fontSize: 13, fontWeight: 600 }}>此终端正在另一个窗口使用</div>
+          <div style={{ fontSize: 12, color: ui.textSecondary }}>
+            点击接管到此窗口
+          </div>
+        </div>
+      )}
 
       {isDragging && (
         <div
