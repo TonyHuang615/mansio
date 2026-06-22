@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebglAddon } from '@xterm/addon-webgl';
@@ -7,6 +7,12 @@ import type { ITheme } from '@xterm/xterm';
 import { darkTerminalTheme } from '../lib/theme';
 import { createShiftEnterHandler } from './shiftEnter';
 import { useAppStore } from '../stores/appStore';
+import {
+  claimSession,
+  releaseSession,
+  ownsSession,
+  subscribeOwnership,
+} from '../lib/sessionLock';
 
 interface UseTerminalOptions {
   sessionId: string | null;
@@ -245,6 +251,12 @@ async function connectWebSocket(inst: TerminalInstance, sid: string): Promise<vo
   if (inst.connecting || inst.ws?.readyState === WebSocket.CONNECTING || inst.ws?.readyState === WebSocket.OPEN) {
     return;
   }
+  // Another window owns this session's tmux client right now — don't attach a
+  // second one (that's the multi-window flicker). We'll reconnect when this
+  // window takes ownership (see reconcileOwnership / the ownership subscriber).
+  if (!ownsSession(sid)) {
+    return;
+  }
 
   inst.connecting = true;
 
@@ -306,7 +318,11 @@ async function connectWebSocket(inst: TerminalInstance, sid: string): Promise<vo
 
   ws.onclose = () => {
     inst.connecting = false;
-    scheduleReconnect(inst, sid);
+    // Don't reconnect a socket we closed because another window took ownership;
+    // reconnection is driven by the ownership subscriber instead.
+    if (ownsSession(sid)) {
+      scheduleReconnect(inst, sid);
+    }
   };
 
   ws.onerror = () => {
@@ -315,6 +331,39 @@ async function connectWebSocket(inst: TerminalInstance, sid: string): Promise<vo
 
   inst.ws = ws;
 }
+
+// React to an ownership change for one session: connect if we now own it and
+// have no live socket; otherwise tear the socket down (which detaches our tmux
+// client and ends the resize fight). The xterm instance and its DOM are left
+// intact so a later takeover repaints instantly instead of rebuilding.
+function reconcileOwnership(sid: string, inst: TerminalInstance): void {
+  if (ownsSession(sid)) {
+    if (!inst.ws || inst.ws.readyState === WebSocket.CLOSED) {
+      void connectWebSocket(inst, sid);
+    }
+    return;
+  }
+  clearTimeout(inst.reconnectTimer);
+  inst.reconnectTimer = undefined;
+  inst.reconnectAttempts = 0;
+  inst.connecting = false;
+  const ws = inst.ws;
+  inst.ws = null;
+  // onclose's reconnect is gated on ownsSession (now false), so this close
+  // won't kick off a reconnect loop.
+  if (ws && ws.readyState !== WebSocket.CLOSED) {
+    ws.close();
+  }
+}
+
+// One module-level subscription fans every ownership change out to all cached
+// instances: a single focus change in another window can flip several sessions
+// at once, so reconcile the whole map rather than wiring a sub per session.
+subscribeOwnership(() => {
+  for (const [sid, inst] of instances) {
+    reconcileOwnership(sid, inst);
+  }
+});
 
 // Detach the cached terminal element for `sessionId` from `container` if it
 // is currently mounted there. The instance itself stays alive in the map;
@@ -380,6 +429,11 @@ export function useTerminal({ sessionId, containerRef, theme }: UseTerminalOptio
       inst.terminal.refresh(0, inst.terminal.rows - 1);
     }
 
+    // Register this window's interest in the session, then connect. claim may
+    // synchronously grant ownership (no contender) and the ownership subscriber
+    // will connect; the explicit call below is a no-op if so (it short-circuits
+    // on an already-connecting/open socket).
+    claimSession(sessionId);
     if (!inst.ws || inst.ws.readyState === WebSocket.CLOSED) {
       void connectWebSocket(inst, sessionId);
     }
@@ -426,6 +480,23 @@ export function useTerminal({ sessionId, containerRef, theme }: UseTerminalOptio
   }, [sessionId, activeTheme]);
 }
 
+// Whether THIS window currently owns `sessionId` (holds its live socket). When
+// false, another window has the terminal and this one should show a paused
+// overlay. Optimistic initial value (true) so the common single-window case
+// never flashes the overlay on mount.
+export function useSessionOwned(sessionId: string | null): boolean {
+  const [ownedNow, setOwnedNow] = useState(true);
+  useEffect(() => {
+    if (!sessionId) {
+      setOwnedNow(true);
+      return;
+    }
+    setOwnedNow(ownsSession(sessionId));
+    return subscribeOwnership((owned) => setOwnedNow(owned.has(sessionId)));
+  }, [sessionId]);
+  return ownedNow;
+}
+
 export function disposeTerminal(sessionId: string): void {
   const inst = instances.get(sessionId);
   if (!inst) return;
@@ -434,6 +505,7 @@ export function disposeTerminal(sessionId: string): void {
   inst.ws?.close();
   inst.terminal.dispose();
   instances.delete(sessionId);
+  releaseSession(sessionId);
 }
 
 export function pasteToTerminal(sessionId: string, text: string): boolean {

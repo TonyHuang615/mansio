@@ -63,6 +63,11 @@ vi.mock('@xterm/xterm', () => {
       attachCustomKeyEventHandler = vi.fn();
       dispose = vi.fn();
       paste = vi.fn();
+      // OSC 52 clipboard + copy-on-select wiring (added by the copy fix). The
+      // real xterm exposes these; the mock must too or createInstance throws.
+      parser = { registerOscHandler: vi.fn() };
+      onSelectionChange = vi.fn();
+      getSelection = vi.fn(() => '');
       constructor(opts: Record<string, unknown> = {}) {
         this.ctorOptions = opts;
         created.push(this as unknown as FakeTerminal);

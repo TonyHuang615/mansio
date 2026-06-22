@@ -4,6 +4,7 @@ import { TerminalView } from './TerminalView';
 
 vi.mock('../../hooks/useTerminal', () => ({
   useTerminal: vi.fn(),
+  useSessionOwned: vi.fn(() => true),
   pasteToTerminal: vi.fn(),
 }));
 
