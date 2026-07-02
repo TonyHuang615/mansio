@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/younkyumjin/mansio/internal/api"
 	"github.com/younkyumjin/mansio/internal/store"
@@ -141,12 +142,30 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 			filepath.Join(homeDir, "Documents"),
 			filepath.Join(homeDir, "Desktop"),
 		}
-		for _, dir := range testDirs {
-			if _, err := os.ReadDir(dir); err != nil {
-				permOk = false
-				permMsg = "Full Disk Access required. Go to System Settings > Privacy & Security > Full Disk Access and add mansio (/usr/local/bin/mansio)."
-				break
+		// Under launchd, reading a TCC-protected dir can block indefinitely on a
+		// pending privacy prompt — never let that hang the health endpoint.
+		type permResult struct {
+			ok  bool
+			msg string
+		}
+		ch := make(chan permResult, 1)
+		go func() {
+			ok, msg := true, ""
+			for _, dir := range testDirs {
+				if _, err := os.ReadDir(dir); err != nil {
+					ok = false
+					msg = "Full Disk Access required. Go to System Settings > Privacy & Security > Full Disk Access and add mansio (/usr/local/bin/mansio)."
+					break
+				}
 			}
+			ch <- permResult{ok, msg}
+		}()
+		select {
+		case r := <-ch:
+			permOk, permMsg = r.ok, r.msg
+		case <-time.After(500 * time.Millisecond):
+			permOk = false
+			permMsg = "Permission check timed out — likely blocked on a macOS privacy (TCC) prompt. Grant Full Disk Access to mansio in System Settings > Privacy & Security."
 		}
 	}
 
