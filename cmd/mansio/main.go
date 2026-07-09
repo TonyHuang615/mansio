@@ -24,6 +24,7 @@ func main() {
 	port := flag.Int("port", 8080, "server port")
 	host := flag.String("host", "127.0.0.1", "server host")
 	dataDir := flag.String("data-dir", "./data", "data directory for SQLite database")
+	noAuth := flag.Bool("no-auth", false, "disable password authentication (only use behind an external auth layer)")
 	flag.Parse()
 
 	distFS, err := fs.Sub(frontendFS, "frontend/dist")
@@ -35,7 +36,11 @@ func main() {
 		log.Fatalf("failed to create data directory: %v", err)
 	}
 
-	srv := server.New(distFS, *dataDir)
+	if *noAuth {
+		log.Println("password authentication DISABLED (--no-auth); make sure an external auth layer fronts this server")
+	}
+
+	srv := server.New(distFS, *dataDir, *noAuth)
 
 	addr := net.JoinHostPort(*host, strconv.Itoa(*port))
 	httpServer := &http.Server{

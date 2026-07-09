@@ -5,6 +5,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/younkyumjin/mansio/internal/store"
 )
 
 func TestAuthManager(t *testing.T) {
@@ -136,6 +138,46 @@ func TestWebSocketTickets(t *testing.T) {
 	t.Run("empty ticket rejected", func(t *testing.T) {
 		if am.consumeWebSocketTicket("") {
 			t.Fatal("empty ticket should be rejected")
+		}
+	})
+}
+
+func TestRequireAuthNoAuth(t *testing.T) {
+	st, err := store.NewSQLite(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewSQLite: %v", err)
+	}
+	t.Cleanup(func() { st.Close() })
+
+	// password configured — normally requireAuth would demand a session
+	if err := st.SetPasswordHash("$2a$10$notarealhashnotarealhashnotarealhash"); err != nil {
+		t.Fatalf("SetPasswordHash: %v", err)
+	}
+
+	handler := func(called *bool) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) { *called = true }
+	}
+
+	t.Run("no-auth bypasses password", func(t *testing.T) {
+		s := &Server{store: st, auth: newAuthManager(), noAuth: true}
+		called := false
+		w := httptest.NewRecorder()
+		s.requireAuth(handler(&called))(w, httptest.NewRequest("GET", "/api/v1/workspaces", nil))
+		if !called {
+			t.Fatal("handler should be called in no-auth mode despite configured password")
+		}
+	})
+
+	t.Run("auth still enforced without flag", func(t *testing.T) {
+		s := &Server{store: st, auth: newAuthManager(), noAuth: false}
+		called := false
+		w := httptest.NewRecorder()
+		s.requireAuth(handler(&called))(w, httptest.NewRequest("GET", "/api/v1/workspaces", nil))
+		if called {
+			t.Fatal("handler should NOT be called without a session when a password is set")
+		}
+		if w.Code != http.StatusUnauthorized {
+			t.Fatalf("status = %d, want %d", w.Code, http.StatusUnauthorized)
 		}
 	})
 }

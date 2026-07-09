@@ -22,9 +22,10 @@ type Server struct {
 	store      store.Store
 	tmuxMgr    *tmux.Manager
 	auth       *authManager
+	noAuth     bool
 }
 
-func New(frontendFS fs.FS, dataDir string) *Server {
+func New(frontendFS fs.FS, dataDir string, noAuth bool) *Server {
 	s, err := store.NewSQLite(dataDir)
 	if err != nil {
 		log.Fatalf("failed to open store: %v", err)
@@ -35,6 +36,7 @@ func New(frontendFS fs.FS, dataDir string) *Server {
 		store:      s,
 		tmuxMgr:    tmux.NewManager(dataDir),
 		auth:       newAuthManager(),
+		noAuth:     noAuth,
 	}
 }
 
@@ -50,6 +52,7 @@ func (s *Server) Handler() http.Handler {
 		ClearCookie:   s.auth.clearSessionCookie,
 		GetToken:      s.auth.getTokenFromRequest,
 		DeleteSession: s.auth.deleteSession,
+		NoAuth:        s.noAuth,
 	})
 	mux.HandleFunc("GET /api/v1/auth/check", ah.Check)
 	mux.HandleFunc("POST /api/v1/auth/setup", ah.Setup)
@@ -86,6 +89,13 @@ func (s *Server) Handler() http.Handler {
 
 func (s *Server) requireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// --no-auth: an external layer (e.g. Coder subdomain proxy) handles auth;
+		// skip even when a password hash exists from a previous setup.
+		if s.noAuth {
+			next(w, r)
+			return
+		}
+
 		hasPass, _ := s.store.HasPassword()
 		if !hasPass {
 			next(w, r)

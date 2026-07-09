@@ -16,6 +16,7 @@ type AuthHandler struct {
 	clearCookie  func(http.ResponseWriter)
 	getToken     func(*http.Request) string
 	deleteSession func(string)
+	noAuth       bool
 }
 
 type AuthHandlerConfig struct {
@@ -25,6 +26,7 @@ type AuthHandlerConfig struct {
 	ClearCookie   func(http.ResponseWriter)
 	GetToken      func(*http.Request) string
 	DeleteSession func(string)
+	NoAuth        bool
 }
 
 func NewAuthHandler(cfg AuthHandlerConfig) *AuthHandler {
@@ -35,10 +37,21 @@ func NewAuthHandler(cfg AuthHandlerConfig) *AuthHandler {
 		clearCookie:   cfg.ClearCookie,
 		getToken:      cfg.GetToken,
 		deleteSession: cfg.DeleteSession,
+		noAuth:        cfg.NoAuth,
 	}
 }
 
 func (h *AuthHandler) Check(w http.ResponseWriter, r *http.Request) {
+	// --no-auth: report no setup needed so the frontend never shows the
+	// password setup/login gate, even if a hash lingers in the DB.
+	if h.noAuth {
+		writeJSON(w, http.StatusOK, map[string]bool{
+			"authenticated": true,
+			"needsSetup":    false,
+		})
+		return
+	}
+
 	hasPass, _ := h.store.HasPassword()
 	writeJSON(w, http.StatusOK, map[string]bool{
 		"authenticated": true,
